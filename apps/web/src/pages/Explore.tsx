@@ -34,6 +34,7 @@ interface CharacterDTO {
   negativePrompt: string | null;
   locked: boolean;
   referenceImageUrl: string | null;
+  turnaroundSheetUrl: string | null;
   referenceImages: string[] | null;
 }
 
@@ -534,7 +535,7 @@ export function Explore() {
       {/* Fullscreen image preview */}
       {imagePreviewUrl && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center cursor-zoom-out"
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center cursor-pointer"
           onClick={() => setImagePreviewUrl(null)}
         >
           <img
@@ -843,37 +844,61 @@ function CharacterCard({
       <CardContent className="space-y-2">
         {/* Reference image area */}
         {character.referenceImageUrl ? (
-          <div className="relative group">
-            <img
-              src={character.referenceImageUrl}
-              alt={character.name}
-              className="w-full h-28 object-cover rounded-lg border cursor-zoom-in"
-              onClick={() => onImagePreview(character.referenceImageUrl!)}
-            />
-            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-2 pointer-events-none group-hover:pointer-events-auto">
-              <button
+          <div className="space-y-2">
+            {/* Portrait */}
+            <div className="relative group">
+              <img
+                src={character.referenceImageUrl}
+                alt={character.name}
+                className="w-full h-28 object-cover rounded-lg border cursor-pointer"
                 onClick={() => onImagePreview(character.referenceImageUrl!)}
-                className="flex items-center gap-1 px-2 py-1 rounded bg-white/90 text-xs font-medium hover:bg-white transition-colors pointer-events-auto"
-              >
-                <ImageIcon className="w-3 h-3" />
-                查看大图
-              </button>
-              <button
-                onClick={handleGenerate}
-                disabled={generating}
-                className="flex items-center gap-1 px-2 py-1 rounded bg-white/90 text-xs font-medium hover:bg-white transition-colors pointer-events-auto"
-              >
-                {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                重新生成
-              </button>
-              <button
-                onClick={() => inputRef.current?.click()}
-                className="flex items-center gap-1 px-2 py-1 rounded bg-white/90 text-xs font-medium hover:bg-white transition-colors pointer-events-auto"
-              >
-                <Upload className="w-3 h-3" />
-                换图
-              </button>
+              />
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-2 pointer-events-none group-hover:pointer-events-auto">
+                <button
+                  onClick={() => onImagePreview(character.referenceImageUrl!)}
+                  className="flex items-center gap-1 px-2 py-1 rounded bg-white/90 text-xs font-medium hover:bg-white transition-colors pointer-events-auto"
+                >
+                  <ImageIcon className="w-3 h-3" />
+                  查看大图
+                </button>
+                <button
+                  onClick={handleGenerate}
+                  disabled={generating}
+                  className="flex items-center gap-1 px-2 py-1 rounded bg-white/90 text-xs font-medium hover:bg-white transition-colors pointer-events-auto"
+                >
+                  {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                  重新生成
+                </button>
+                <button
+                  onClick={() => inputRef.current?.click()}
+                  className="flex items-center gap-1 px-2 py-1 rounded bg-white/90 text-xs font-medium hover:bg-white transition-colors pointer-events-auto"
+                >
+                  <Upload className="w-3 h-3" />
+                  换图
+                </button>
+              </div>
             </div>
+            {/* Turnaround sheet (三视图) */}
+            {character.turnaroundSheetUrl && (
+              <div className="relative group">
+                <div className="text-[10px] text-muted-foreground mb-0.5 font-medium">三视图（用于视频生成参考）</div>
+                <img
+                  src={character.turnaroundSheetUrl}
+                  alt={`${character.name} 三视图`}
+                  className="w-full h-20 object-cover rounded-lg border cursor-pointer"
+                  onClick={() => onImagePreview(character.turnaroundSheetUrl!)}
+                />
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center mt-4 pointer-events-none group-hover:pointer-events-auto">
+                  <button
+                    onClick={() => onImagePreview(character.turnaroundSheetUrl!)}
+                    className="flex items-center gap-1 px-2 py-1 rounded bg-white/90 text-xs font-medium hover:bg-white transition-colors pointer-events-auto"
+                  >
+                    <ImageIcon className="w-3 h-3" />
+                    查看大图
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="border-2 border-dashed rounded-lg divide-y divide-dashed">
@@ -889,10 +914,10 @@ function CharacterCard({
                 <Sparkles className="w-5 h-5 text-primary" />
               )}
               <span className="text-xs font-medium">
-                {generating ? "生成中..." : "从提示词生成参考图"}
+                {generating ? "生成中（肖像 + 三视图）..." : "从提示词生成参考图"}
               </span>
               <span className="text-[10px] text-muted-foreground">
-                基于 identityPrompt 自动生成
+                自动生成角色肖像和三视图（正面/侧面/背面）
               </span>
             </button>
             {/* Secondary: upload custom image */}
@@ -1024,7 +1049,7 @@ function LocationCard({
             <img
               src={location.referenceImageUrl}
               alt={location.name}
-              className="w-full h-28 object-cover rounded-lg border cursor-zoom-in"
+              className="w-full h-28 object-cover rounded-lg border cursor-pointer"
               onClick={() => onImagePreview(location.referenceImageUrl!)}
             />
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-2 pointer-events-none group-hover:pointer-events-auto">
@@ -1193,7 +1218,7 @@ const ShotCard = React.forwardRef<HTMLDivElement, {
               {/* Location ref thumbnail */}
               {location?.referenceImageUrl ? (
                 <div
-                  className="flex items-center gap-1 rounded-md border bg-muted/30 overflow-hidden cursor-zoom-in hover:ring-1 hover:ring-primary/50 transition-shadow"
+                  className="flex items-center gap-1 rounded-md border bg-muted/30 overflow-hidden cursor-pointer hover:ring-1 hover:ring-primary/50 transition-shadow"
                   onClick={() => onImagePreview(location.referenceImageUrl!)}
                 >
                   <img src={location.referenceImageUrl} alt={locationName} className="w-5 h-5 object-cover" />
@@ -1208,7 +1233,7 @@ const ShotCard = React.forwardRef<HTMLDivElement, {
                 char.referenceImageUrl ? (
                   <div
                     key={char.id}
-                    className="flex items-center gap-1 rounded-full border bg-muted/30 overflow-hidden cursor-zoom-in hover:ring-1 hover:ring-primary/50 transition-shadow"
+                    className="flex items-center gap-1 rounded-full border bg-muted/30 overflow-hidden cursor-pointer hover:ring-1 hover:ring-primary/50 transition-shadow"
                     onClick={() => onImagePreview(char.referenceImageUrl!)}
                   >
                     <img src={char.referenceImageUrl} alt={char.name} className="w-5 h-5 object-cover rounded-full" />
@@ -1428,7 +1453,7 @@ function GenerateShotCard({
                 {/* Location ref thumbnail */}
                 {location?.referenceImageUrl ? (
                   <div
-                    className="flex items-center gap-1 rounded-md border bg-muted/30 overflow-hidden cursor-zoom-in hover:ring-1 hover:ring-primary/50 transition-shadow"
+                    className="flex items-center gap-1 rounded-md border bg-muted/30 overflow-hidden cursor-pointer hover:ring-1 hover:ring-primary/50 transition-shadow"
                     onClick={() => onImagePreview(location.referenceImageUrl!)}
                   >
                     <img src={location.referenceImageUrl} alt={locationName} className="w-5 h-5 object-cover" />
@@ -1443,7 +1468,7 @@ function GenerateShotCard({
                   char.referenceImageUrl ? (
                     <div
                       key={char.id}
-                      className="flex items-center gap-1 rounded-full border bg-muted/30 overflow-hidden cursor-zoom-in hover:ring-1 hover:ring-primary/50 transition-shadow"
+                      className="flex items-center gap-1 rounded-full border bg-muted/30 overflow-hidden cursor-pointer hover:ring-1 hover:ring-primary/50 transition-shadow"
                       onClick={() => onImagePreview(char.referenceImageUrl!)}
                     >
                       <img src={char.referenceImageUrl} alt={char.name} className="w-5 h-5 object-cover rounded-full" />

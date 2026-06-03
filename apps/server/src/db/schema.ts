@@ -85,6 +85,7 @@ export const storyCharacters = sqliteTable("story_characters", {
   description: text("description").notNull(),
   appearance: text("appearance"),
   referenceImageUrl: text("reference_image_url"),
+  turnaroundSheetUrl: text("turnaround_sheet_url"),
   role: text("role"),
   profileJson: text("profile_json"),
   identityPrompt: text("identity_prompt"),

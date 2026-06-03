@@ -21,6 +21,7 @@ export interface CharacterDTO {
   negativePrompt: string | null;
   locked: boolean;
   referenceImageUrl: string | null;
+  turnaroundSheetUrl: string | null;
   referenceImages: string[] | null;
 }
 
@@ -107,6 +108,7 @@ export function mapCharacter(row: StoryCharacter): CharacterDTO {
     negativePrompt: row.negativePrompt,
     locked: row.locked === 1,
     referenceImageUrl: row.referenceImageUrl,
+    turnaroundSheetUrl: row.turnaroundSheetUrl,
     referenceImages,
   };
 }

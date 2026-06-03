@@ -779,7 +779,7 @@ export class NovelVideoService {
       .where(eq(storyCharacters.projectId, projectId));
 
     const refChars = characters.filter(
-      (c) => charIds.includes(c.id) && c.referenceImageUrl
+      (c) => charIds.includes(c.id) && (c.turnaroundSheetUrl || c.referenceImageUrl)
     );
 
     let effectiveModel = "happyhorse-1.0-t2v";
@@ -804,8 +804,11 @@ export class NovelVideoService {
       for (let i = 0; i < refChars.length; i++) {
         const c = refChars[i];
         try {
-          const imageUrl = await this.getReferenceUrl(c.referenceImageUrl!);
-          console.log(`[novel-video] ref image char=${c.name} urlType=${imageUrl.startsWith("http") ? "OSS" : "dataURI"} urlLen=${imageUrl.length}`);
+          // Prefer turnaround sheet (三视图) for r2v reference, fall back to portrait
+          const refUrl = c.turnaroundSheetUrl || c.referenceImageUrl;
+          if (!refUrl) continue;
+          const imageUrl = await this.getReferenceUrl(refUrl);
+          console.log(`[novel-video] ref image char=${c.name} type=${c.turnaroundSheetUrl ? "turnaround" : "portrait"} urlType=${imageUrl.startsWith("http") ? "OSS" : "dataURI"} urlLen=${imageUrl.length}`);
           if (imageUrl.length > 10 * 1024 * 1024) {
             console.warn(`[novel-video] ref image too large, skipping char=${c.name}`);
             continue;
@@ -916,12 +919,76 @@ export class NovelVideoService {
     if (!character) throw new Error("角色不存在");
     if (!character.identityPrompt) throw new Error("角色缺少 identityPrompt，请先生成角色库");
 
-    const prompt = character.identityPrompt;
-    const negativePrompt = character.negativePrompt || "";
+    const basePrompt = character.identityPrompt;
+    const negativePrompt = (character.negativePrompt || "") + ", background, scenery, environment, landscape, indoor, outdoor, lighting effects";
 
     console.log(`[generateCharacterReference] Generating for character "${character.name}" (id=${characterId})`);
 
-    // Call DashScope image generation API
+    // 1. Generate portrait (white background, character only)
+    const portraitPrompt = `Character portrait, ${basePrompt}. Plain white background, full body or upper body portrait, character standing still facing forward, no background scenery, no environment, studio lighting on white backdrop, character design sheet style.`;
+
+    const portraitUrl = await this.callImageGeneration(
+      portraitPrompt,
+      negativePrompt,
+      `ref-char-${characterId}`,
+      "portrait"
+    );
+
+    // Upload portrait to OSS
+    let portraitFinal = portraitUrl;
+    try { portraitFinal = await this.uploadLocalToOSS(portraitUrl, `char/${characterId}-portrait-${Date.now()}`); } catch (err) {
+      console.warn("[generateCharacterReference] Portrait OSS upload failed:", err);
+    }
+
+    // 2. Generate turnaround sheet (front, side, back)
+    const turnaroundPrompt = `Character turnaround reference sheet showing the same character from three views: front view (center), side view (left), and back view (right). ${basePrompt}. The character is shown in a neutral standing pose from each angle. Plain white background, character design turnaround sheet, clean layout, consistent appearance across all three views, no background scenery, no environment.`;
+
+    let turnaroundFinal: string | null = null;
+    try {
+      const turnaroundUrl = await this.callImageGeneration(
+        turnaroundPrompt,
+        negativePrompt,
+        `ref-char-${characterId}-turnaround`,
+        "turnaround"
+      );
+
+      try { turnaroundFinal = await this.uploadLocalToOSS(turnaroundUrl, `char/${characterId}-turnaround-${Date.now()}`); } catch (err) {
+        console.warn("[generateCharacterReference] Turnaround OSS upload failed:", err);
+        turnaroundFinal = turnaroundUrl;
+      }
+    } catch (err: any) {
+      console.warn(`[generateCharacterReference] Turnaround sheet generation failed: ${err.message}`);
+      // Non-fatal: portrait alone is still usable
+    }
+
+    // Update character with both images
+    await db
+      .update(storyCharacters)
+      .set({
+        referenceImageUrl: portraitFinal,
+        turnaroundSheetUrl: turnaroundFinal,
+        updatedAt: Date.now(),
+      })
+      .where(eq(storyCharacters.id, characterId));
+
+    const [updated] = await db
+      .select()
+      .from(storyCharacters)
+      .where(eq(storyCharacters.id, characterId))
+      .limit(1);
+
+    return mapCharacter(updated);
+  }
+
+  /**
+   * Call DashScope image generation API, download result, return local URL.
+   */
+  private async callImageGeneration(
+    prompt: string,
+    negativePrompt: string,
+    taskIdPrefix: string,
+    filePrefix: string
+  ): Promise<string> {
     const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || "";
     const response = await fetch(
       "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
@@ -935,10 +1002,7 @@ export class NovelVideoService {
           model: "qwen-image-2.0-pro",
           input: {
             messages: [
-              {
-                role: "user",
-                content: [{ text: prompt }],
-              },
+              { role: "user", content: [{ text: prompt }] },
             ],
           },
           parameters: {
@@ -969,44 +1033,27 @@ export class NovelVideoService {
       throw new Error("图片生成失败：模型未返回图片");
     }
 
-    // Download and save the image
-    const remoteUrl = images[0].image;
-    const taskId = `ref-char-${characterId}-${Date.now()}`;
-    const localUrl = await this.downloadAndSaveFile(remoteUrl, taskId, "ref");
+    const taskId = `${taskIdPrefix}-${Date.now()}`;
+    return await this.downloadAndSaveFile(images[0].image, taskId, filePrefix);
+  }
 
-    // Upload to OSS (also keeps local copy)
-    let finalUrl = localUrl;
-    try {
-      const relativePath = localUrl.replace("/api/uploads/", "");
-      const fullPath = path.join(UPLOADS_DIR, relativePath);
-      const file = Bun.file(fullPath);
-      if (await file.exists()) {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const ext = path.extname(relativePath).slice(1) || "png";
-        const mimeMap: Record<string, string> = {
-          png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp",
-        };
-        const contentType = mimeMap[ext] || "image/png";
-        const ossUrl = await uploadToOSS(buffer, `char/${characterId}-ref-${Date.now()}.${ext}`, contentType);
-        if (ossUrl) finalUrl = ossUrl;
-      }
-    } catch (err) {
-      console.warn("[generateCharacterReference] OSS upload failed, using local URL:", err);
-    }
+  /**
+   * Upload a local file (from /api/uploads/ path) to OSS, return OSS URL or original.
+   */
+  private async uploadLocalToOSS(localUrl: string, keyPrefix: string): Promise<string> {
+    const relativePath = localUrl.replace("/api/uploads/", "");
+    const fullPath = path.join(UPLOADS_DIR, relativePath);
+    const file = Bun.file(fullPath);
+    if (!(await file.exists())) return localUrl;
 
-    // Update character
-    await db
-      .update(storyCharacters)
-      .set({ referenceImageUrl: finalUrl, updatedAt: Date.now() })
-      .where(eq(storyCharacters.id, characterId));
-
-    const [updated] = await db
-      .select()
-      .from(storyCharacters)
-      .where(eq(storyCharacters.id, characterId))
-      .limit(1);
-
-    return mapCharacter(updated);
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const ext = path.extname(relativePath).slice(1) || "png";
+    const mimeMap: Record<string, string> = {
+      png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp",
+    };
+    const contentType = mimeMap[ext] || "image/png";
+    const ossUrl = await uploadToOSS(buffer, `${keyPrefix}.${ext}`, contentType);
+    return ossUrl || localUrl;
   }
 
   // ===== Generate Location Reference Image =====

@@ -37,15 +37,14 @@ export function buildCharacterPrompt(
   characterName: string
 ) {
   return {
-    system: `你是一个专业的影视角色设定师。你需要为角色创建详细的外观描述。
+    system: `你是一个专业的影视角色设定师。你需要为角色创建简洁自然的外观描述。
 
 硬性规则：
 1. 只输出 JSON，不要输出任何解释文字。
 2. 不要使用"帅气、漂亮、神秘、气质非凡"等空洞形容词。
-3. 必须描述具体的：脸型、五官（眼睛、眉毛、鼻子、嘴巴）、肤色、发型、发色、发长、体型、身高。
-4. 服装必须描述：主色、款式、面料、具体细节。
-5. identityPrompt 必须是一段能直接拼进视频生成 prompt 的英文描述，包含所有外貌特征。
-6. negativePrompt 必须包含：禁止换脸、禁止换衣、禁止变年龄、禁止多余人物。
+3. 必须描述：脸型、五官、肤色、发型发色发长、体型、身高、服装。
+4. identityPrompt 是一段简洁的英文外貌描述，只描述人物本身的静态外貌特征，用自然语言像向朋友描述一个人一样。**不要**包含任何场景、背景、灯光、天气、动作、情绪、镜头语言（如 cinematic lighting, rainy night, highly detailed, photorealistic, 8k 等统统不要写）。保持简洁，像在做一个角色的速写描述，100词以内。
+5. negativePrompt 必须包含：禁止换脸、禁止换衣、禁止变年龄、禁止多余人物。
 
 输出格式：
 {
@@ -75,7 +74,7 @@ export function buildCharacterPrompt(
     "details": ["具体细节1", "具体细节2"]
   },
   "accessories": ["配饰1", "配饰2"],
-  "identityPrompt": "英文描述，可直接用于视频生成 prompt",
+  "identityPrompt": "简洁的英文外貌描述，100词以内，只描述人物静态外貌，不含场景/灯光/镜头语言",
   "negativePrompt": "英文负面约束"
 }`,
     prompt: `小说文本：
@@ -85,7 +84,7 @@ ${storyText.slice(0, 3000)}
 核心冲突：${analysis.mainConflict}
 关键时间线：${analysis.timeline.join(" → ")}
 
-请为角色"${characterName}"创建详细的外观设定。`,
+请为角色"${characterName}"创建外观设定。identityPrompt 必须简洁自然，只描述人物外貌，不要写任何场景背景、灯光效果或镜头语言。`,
   };
 }
 

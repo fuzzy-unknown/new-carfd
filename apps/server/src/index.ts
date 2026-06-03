@@ -3,6 +3,7 @@ import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import { healthRoute } from "./modules/health";
 import { userRoute } from "./modules/user";
+import { bailianRoute } from "./modules/bailian";
 import { initializeDatabase } from "./db";
 
 const PORT = Number(process.env.PORT) || 5001;
@@ -26,12 +27,14 @@ async function start() {
           tags: [
             { name: "健康检查", description: "健康检查端点" },
             { name: "用户", description: "用户管理端点" },
+            { name: "百炼", description: "百炼 AI 模型端点" },
           ],
         },
       })
     )
     .use(healthRoute)
     .use(userRoute)
+    .use(bailianRoute)
     .listen(PORT);
 
   console.log(`Server running at http://localhost:${app.server!.port}`);

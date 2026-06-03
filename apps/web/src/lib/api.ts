@@ -23,4 +23,16 @@ export const api = {
         body: JSON.stringify(data),
       }).then(handleResponse),
   },
+
+  bailian: {
+    getModels: () => fetch(`${API_BASE}/bailian/models`).then(handleResponse),
+    generate: (data: { model: string; parameters: Record<string, any> }) =>
+      fetch(`${API_BASE}/bailian/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }).then(handleResponse),
+    getRecords: () => fetch(`${API_BASE}/bailian/records`).then(handleResponse),
+    getRecordById: (id: number) => fetch(`${API_BASE}/bailian/records/${id}`).then(handleResponse),
+  },
 };

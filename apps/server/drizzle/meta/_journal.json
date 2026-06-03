@@ -43,6 +43,13 @@
       "when": 1780485477618,
       "tag": "0005_puzzling_loki",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1780495491574,
+      "tag": "0006_eager_bushwacker",
+      "breakpoints": true
     }
   ]
 }

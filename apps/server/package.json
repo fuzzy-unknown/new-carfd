@@ -12,6 +12,7 @@
     "@angry-mushroom/shared": "workspace:*",
     "@elysiajs/cors": "^1.2",
     "@elysiajs/openapi": "^1.4.15",
+    "ali-oss": "^6.23.0",
     "drizzle-orm": "^0.44",
     "elysia": "^1.3"
   },

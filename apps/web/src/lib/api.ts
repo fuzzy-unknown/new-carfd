@@ -70,4 +70,86 @@ export const api = {
       }).then(handleResponse);
     },
   },
+
+  novelVideo: {
+    listProjects: () =>
+      fetch(`${API_BASE}/novel-video/projects`).then(handleResponse),
+
+    createProject: (data: { title?: string; storyText: string }) =>
+      fetch(`${API_BASE}/novel-video/projects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }).then(handleResponse),
+
+    getProject: (id: number) =>
+      fetch(`${API_BASE}/novel-video/projects/${id}`).then(handleResponse),
+
+    analyzeProject: (id: number) =>
+      fetch(`${API_BASE}/novel-video/projects/${id}/analyze`, {
+        method: "POST",
+      }).then(handleResponse),
+
+    generateCharacters: (id: number) =>
+      fetch(`${API_BASE}/novel-video/projects/${id}/characters/generate`, {
+        method: "POST",
+      }).then(handleResponse),
+
+    generateLocations: (id: number) =>
+      fetch(`${API_BASE}/novel-video/projects/${id}/locations/generate`, {
+        method: "POST",
+      }).then(handleResponse),
+
+    generateStoryboard: (id: number) =>
+      fetch(`${API_BASE}/novel-video/projects/${id}/storyboard/generate`, {
+        method: "POST",
+      }).then(handleResponse),
+
+    checkContinuity: (id: number) =>
+      fetch(`${API_BASE}/novel-video/projects/${id}/continuity/check`, {
+        method: "POST",
+      }).then(handleResponse),
+
+    rebuildPrompts: (id: number) =>
+      fetch(`${API_BASE}/novel-video/projects/${id}/prompts/rebuild`, {
+        method: "POST",
+      }).then(handleResponse),
+
+    updateCharacter: (id: number, patch: Record<string, any>) =>
+      fetch(`${API_BASE}/novel-video/characters/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).then(handleResponse),
+
+    updateLocation: (id: number, patch: Record<string, any>) =>
+      fetch(`${API_BASE}/novel-video/locations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).then(handleResponse),
+
+    updateShot: (id: number, patch: Record<string, any>) =>
+      fetch(`${API_BASE}/novel-video/shots/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).then(handleResponse),
+
+    generateShot: (id: number, options?: { resolution?: string; duration?: number }) =>
+      fetch(`${API_BASE}/novel-video/shots/${id}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options || {}),
+      }).then(handleResponse),
+
+    uploadCharacterReference: (id: number, file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return fetch(`${API_BASE}/novel-video/characters/${id}/upload-reference`, {
+        method: "POST",
+        body: formData,
+      }).then(handleResponse);
+    },
+  },
 };

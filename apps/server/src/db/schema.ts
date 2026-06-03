@@ -37,8 +37,10 @@ export type NewGenerationRecord = typeof generationRecords.$inferInsert;
 // ===== 故事探索项目表 =====
 export const storyProjects = sqliteTable("story_projects", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title"),
   storyText: text("story_text").notNull(),
-  status: text("status").notNull().default("ready"), // analyzing, ready, generating, completed
+  status: text("status").notNull().default("draft"), // draft, analyzed, characters_ready, scenes_ready, storyboard_ready, continuity_checked, generating, completed, failed
+  analysisJson: text("analysis_json"),
   isDeleted: integer("is_deleted").notNull().default(0),
   createdAt: integer("created_at")
     .notNull()
@@ -83,6 +85,12 @@ export const storyCharacters = sqliteTable("story_characters", {
   description: text("description").notNull(),
   appearance: text("appearance"),
   referenceImageUrl: text("reference_image_url"),
+  role: text("role"),
+  profileJson: text("profile_json"),
+  identityPrompt: text("identity_prompt"),
+  negativePrompt: text("negative_prompt"),
+  locked: integer("locked").notNull().default(0),
+  referenceImagesJson: text("reference_images_json"),
   createdAt: integer("created_at")
     .notNull()
     .$defaultFn(() => Date.now()),
@@ -93,3 +101,65 @@ export const storyCharacters = sqliteTable("story_characters", {
 
 export type StoryCharacter = typeof storyCharacters.$inferSelect;
 export type NewStoryCharacter = typeof storyCharacters.$inferInsert;
+
+// ===== 场景库表 =====
+export const storyLocations = sqliteTable("story_locations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => storyProjects.id),
+  name: text("name").notNull(),
+  type: text("type").notNull().default("mixed"),
+  profileJson: text("profile_json").notNull(),
+  scenePrompt: text("scene_prompt").notNull(),
+  negativePrompt: text("negative_prompt"),
+  locked: integer("locked").notNull().default(0),
+  createdAt: integer("created_at")
+    .notNull()
+    .$defaultFn(() => Date.now()),
+  updatedAt: integer("updated_at")
+    .notNull()
+    .$defaultFn(() => Date.now()),
+});
+
+export type StoryLocation = typeof storyLocations.$inferSelect;
+export type NewStoryLocation = typeof storyLocations.$inferInsert;
+
+// ===== 分镜表 =====
+export const storyShots = sqliteTable("story_shots", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => storyProjects.id),
+  shotIndex: integer("shot_index").notNull(),
+  duration: integer("duration").notNull().default(5),
+  locationId: integer("location_id").references(() => storyLocations.id),
+  characterIdsJson: text("character_ids_json").notNull().default("[]"),
+  narrative: text("narrative").notNull(),
+  cameraJson: text("camera_json").notNull(),
+  continuityJson: text("continuity_json").notNull(),
+  videoPrompt: text("video_prompt"),
+  negativePrompt: text("negative_prompt"),
+  videoTaskId: text("video_task_id"),
+  videoUrl: text("video_url"),
+  status: text("status").notNull().default("draft"),
+  errorMessage: text("error_message"),
+  createdAt: integer("created_at")
+    .notNull()
+    .$defaultFn(() => Date.now()),
+  updatedAt: integer("updated_at")
+    .notNull()
+    .$defaultFn(() => Date.now()),
+});
+
+export type StoryShot = typeof storyShots.$inferSelect;
+export type NewStoryShot = typeof storyShots.$inferInsert;
+
+// ===== 连续性检查结果表 =====
+export const continuityReports = sqliteTable("continuity_reports", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => storyProjects.id),
+  issuesJson: text("issues_json").notNull(),
+  createdAt: integer("created_at")
+    .notNull()
+    .$defaultFn(() => Date.now()),
+});
+
+export type ContinuityReport = typeof continuityReports.$inferSelect;
+export type NewContinuityReport = typeof continuityReports.$inferInsert;

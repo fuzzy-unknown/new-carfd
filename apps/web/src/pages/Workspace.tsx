@@ -68,7 +68,14 @@ export function Workspace() {
   const [currentTask, setCurrentTask] = useState<{ taskId: string; status: string } | null>(null);
 
   useEffect(() => {
-    api.bailian.getModels().then(setModels).catch(console.error);
+    api.bailian.getModels().then(data => {
+      setModels(data);
+      const categoryModels = data.filter(m => m.category === selectedCategory);
+      if (categoryModels.length > 0 && !selectedModel) {
+        setSelectedModel(categoryModels[0]);
+        initParameters(categoryModels[0]);
+      }
+    }).catch(console.error);
   }, []);
 
   useEffect(() => {

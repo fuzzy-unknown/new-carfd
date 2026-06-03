@@ -1,7 +1,11 @@
 import { db } from "../../db";
 import { generationRecords } from "../../db/schema";
 import { MODELS, type ModelConfig } from "../../config/models";
-import { eq } from "drizzle-orm";
+import { UPLOADS_DIR } from "../../config/paths";
+import { eq, and, or } from "drizzle-orm";
+import path from "path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { parseDashScopeError } from "../../utils/dashscope-errors";
 
 const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || "";
 
@@ -48,6 +52,7 @@ export class BailianService {
     taskId: string,
     updates: Partial<{
       status: 'pending' | 'processing' | 'succeeded' | 'failed';
+      inputParams: string;
       outputResult: string;
       cost: string;
       errorMessage: string;
@@ -100,6 +105,129 @@ export class BailianService {
     }
   }
 
+  private sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  private async downloadAndSaveFile(url: string, taskId: string, fileName: string): Promise<string> {
+    const taskDir = path.join(UPLOADS_DIR, taskId);
+    await mkdir(taskDir, { recursive: true });
+
+    let buffer = Buffer.alloc(0);
+    let ext = "mp4";
+
+    if (url.startsWith("data:")) {
+      const matches = url.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) throw new Error("Invalid data URI");
+      ext = matches[1].split("/")[1] || "png";
+      buffer = Buffer.from(matches[2], "base64");
+    } else {
+      // Retry up to 3 times with exponential backoff for transient network errors
+      let lastError: Error | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) {
+          await this.sleep(1000 * Math.pow(2, attempt - 1));
+        }
+        try {
+          const response = await fetch(url, {
+            headers: {
+              Authorization: `Bearer ${DASHSCOPE_API_KEY}`,
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          buffer = Buffer.from(arrayBuffer);
+          const contentType = response.headers.get("content-type") || "";
+          ext = contentType.split("/")[1] || "mp4";
+          lastError = null;
+          break;
+        } catch (err: any) {
+          lastError = err;
+          if (attempt < 2) {
+            console.error(`Download attempt ${attempt + 1} failed for ${fileName} (task ${taskId}), retrying...`, err.message);
+          }
+        }
+      }
+      if (lastError) {
+        throw new Error(`下载失败（已重试 3 次）：${lastError.message}`);
+      }
+    }
+
+    const fullPath = path.join(taskDir, `${fileName}.${ext}`);
+    await writeFile(fullPath, buffer);
+
+    return `/api/uploads/${taskId}/${fileName}.${ext}`;
+  }
+
+  private async callDashScopeApi(url: string, body: any): Promise<any> {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${DASHSCOPE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (error: any) {
+      throw new Error(`网络错误：无法连接百炼 API（${error.message || '未知网络错误'}）`);
+    }
+
+    if (!response.ok) {
+      let errorBody: any;
+      try {
+        errorBody = await response.json();
+      } catch {
+        throw new Error(`HTTP ${response.status}：百炼服务返回错误`);
+      }
+      const errMsg = parseDashScopeError(errorBody);
+      throw new Error(errMsg);
+    }
+
+    const result = await response.json();
+
+    // Check for DashScope-level errors (HTTP 200 but error in body)
+    if (result.code || result.error?.code) {
+      const errMsg = parseDashScopeError(result);
+      throw new Error(errMsg);
+    }
+
+    return result;
+  }
+
+  private async queryDashScopeTask(taskId: string): Promise<any> {
+    try {
+      const response = await fetch(
+        `https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${DASHSCOPE_API_KEY}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        let errorBody: any;
+        try {
+          errorBody = await response.json();
+        } catch {
+          return null;
+        }
+        const errMsg = parseDashScopeError(errorBody);
+        console.error(`Query task ${taskId} failed: ${errMsg}`);
+        return null;
+      }
+
+      return await response.json();
+    } catch (error: any) {
+      console.error(`Query task ${taskId} network error:`, error);
+      return null;
+    }
+  }
+
   async generate(request: GenerationRequest): Promise<GenerationResponse> {
     const { model, parameters } = request;
     const modelConfig = MODELS[model];
@@ -140,13 +268,9 @@ export class BailianService {
   ): Promise<GenerationResponse> {
     await this.updateRecord(taskId, { status: 'processing' });
 
-    const response = await fetch('https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${DASHSCOPE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const result = await this.callDashScopeApi(
+      'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
+      {
         model,
         input: {
           messages: [
@@ -162,10 +286,8 @@ export class BailianService {
           top_p: parameters.top_p || 0.9,
           result_format: 'message',
         },
-      }),
-    });
-
-    const result = await response.json();
+      }
+    );
 
     if (result.output && result.output.choices) {
       const text = result.output.choices[0]?.message?.content || '';
@@ -185,9 +307,9 @@ export class BailianService {
         result: { text },
         cost,
       };
-    } else {
-      throw new Error(result.message || 'Text generation failed');
     }
+
+    throw new Error('文本生成失败：模型未返回有效结果');
   }
 
   private async generateImage(
@@ -197,13 +319,9 @@ export class BailianService {
   ): Promise<GenerationResponse> {
     await this.updateRecord(taskId, { status: 'processing' });
 
-    const response = await fetch('https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${DASHSCOPE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const result = await this.callDashScopeApi(
+      'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
+      {
         model,
         input: {
           messages: [
@@ -222,32 +340,41 @@ export class BailianService {
           watermark: parameters.watermark !== undefined ? parameters.watermark : false,
           prompt_extend: parameters.prompt_extend !== undefined ? parameters.prompt_extend : true,
         },
-      }),
-    });
-
-    const result = await response.json();
+      }
+    );
 
     if (result.output && result.output.choices) {
       const images = result.output.choices[0]?.message?.content || [];
       const usage = result.usage;
 
+      // Download and save images locally
+      const localImages = await Promise.all(
+        images.map(async (item: any, i: number) => {
+          if (item.image) {
+            const localUrl = await this.downloadAndSaveFile(item.image, taskId, `img_${i}`);
+            return { image: localUrl };
+          }
+          return item;
+        })
+      );
+
       const cost = this.calculateCost(model, usage);
 
       await this.updateRecord(taskId, {
         status: 'succeeded',
-        outputResult: JSON.stringify({ images }),
+        outputResult: JSON.stringify({ images: localImages }),
         cost: JSON.stringify(cost),
       });
 
       return {
         taskId,
         status: 'succeeded',
-        result: { images },
+        result: { images: localImages },
         cost,
       };
-    } else {
-      throw new Error(result.message || 'Image generation failed');
     }
+
+    throw new Error('图像生成失败：模型未返回有效结果');
   }
 
   private async generateVideo(
@@ -256,38 +383,187 @@ export class BailianService {
     taskId: string
   ): Promise<GenerationResponse> {
     // 视频生成是异步的，需要先创建任务
-    const response = await fetch('https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${DASHSCOPE_API_KEY}`,
-        'Content-Type': 'application/json',
-        'X-DashScope-Async': 'enable',
-      },
-      body: JSON.stringify({
-        model,
-        input: {
-          prompt: parameters.prompt || '',
-        },
-        parameters: {
-          resolution: parameters.resolution || '720P',
-          ratio: parameters.ratio || '16:9',
-          duration: parameters.duration || 5,
-          watermark: parameters.watermark !== undefined ? parameters.watermark : true,
-        },
-      }),
-    });
+    let result: any;
+    try {
+      const response = await fetch(
+        'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${DASHSCOPE_API_KEY}`,
+            'Content-Type': 'application/json',
+            'X-DashScope-Async': 'enable',
+          },
+          body: JSON.stringify({
+            model,
+            input: {
+              prompt: parameters.prompt || '',
+            },
+            parameters: {
+              resolution: parameters.resolution || '720P',
+              ratio: parameters.ratio || '16:9',
+              duration: parameters.duration || 5,
+              watermark: parameters.watermark !== undefined ? parameters.watermark : true,
+            },
+          }),
+        }
+      );
 
-    const result = await response.json();
+      if (!response.ok) {
+        let errorBody: any;
+        try {
+          errorBody = await response.json();
+        } catch {
+          throw new Error(`HTTP ${response.status}：百炼服务返回错误`);
+        }
+        throw new Error(parseDashScopeError(errorBody));
+      }
+
+      result = await response.json();
+
+      if (result.code || result.error?.code) {
+        throw new Error(parseDashScopeError(result));
+      }
+    } catch (error: any) {
+      // Wrap network errors with user-friendly message
+      if (error.message?.startsWith('HTTP') || error.message?.includes('百炼')) {
+        throw error;
+      }
+      throw new Error(`网络错误：无法连接百炼 API（${error.message || '未知网络错误'}）`);
+    }
 
     if (result.output && result.output.task_id) {
-      // 异步任务已创建，返回任务 ID
+      // Store DashScope task ID in inputParams for later polling
+      await this.updateRecord(taskId, {
+        inputParams: JSON.stringify({
+          ...parameters,
+          _dashscope_task_id: result.output.task_id,
+        }),
+      });
+
       return {
         taskId,
         status: 'pending',
       };
-    } else {
-      throw new Error(result.message || 'Video generation task creation failed');
     }
+
+    throw new Error('视频任务创建失败：百炼未返回任务 ID');
+  }
+
+  async pollVideoTasks() {
+    const staleThreshold = Date.now() - 4 * 60 * 60 * 1000; // 4 hours
+    const pendingRecords = await db
+      .select()
+      .from(generationRecords)
+      .where(
+        and(
+          eq(generationRecords.category, 'video'),
+          or(
+            eq(generationRecords.status, 'pending'),
+            eq(generationRecords.status, 'processing')
+          )
+        )
+      )
+      .limit(10);
+
+    for (const record of pendingRecords) {
+      if (!record.taskId || !record.model) {
+        // Clean up records with missing IDs
+        await db
+          .update(generationRecords)
+          .set({ status: 'failed', errorMessage: '记录数据不完整', updatedAt: Date.now() })
+          .where(eq(generationRecords.id, record.id));
+        continue;
+      }
+
+      // Mark stale tasks as failed
+      if (record.createdAt < staleThreshold) {
+        await this.updateRecord(record.taskId, {
+          status: 'failed',
+          errorMessage: '视频生成超时：任务超过 4 小时未完成，已自动取消',
+        });
+        continue;
+      }
+
+      const inputParams = JSON.parse(record.inputParams);
+      const dashscopeTaskId = inputParams._dashscope_task_id;
+      if (!dashscopeTaskId) {
+        await this.updateRecord(record.taskId, {
+          status: 'failed',
+          errorMessage: '系统错误：缺少百炼任务 ID',
+        });
+        continue;
+      }
+
+      // Mark as processing if still pending
+      if (record.status === 'pending') {
+        await this.updateRecord(record.taskId, { status: 'processing' });
+      }
+
+      const result = await this.queryDashScopeTask(dashscopeTaskId);
+      if (!result || !result.output) {
+        // Transient network error, skip this poll cycle
+        continue;
+      }
+
+      const taskStatus = result.output.task_status;
+
+      if (taskStatus === 'SUCCEEDED') {
+        // Try multiple possible response formats
+        const results = result.output.results || [];
+        const videoUrl =
+          results[0]?.video_url ||
+          results[0]?.url ||
+          result.output.video_url ||
+          result.output.result?.video_url;
+
+        if (!videoUrl) {
+          console.error(
+            `Video task ${dashscopeTaskId} SUCCEEDED but no URL found. Response:`,
+            JSON.stringify(result.output)
+          );
+          await this.updateRecord(record.taskId, {
+            status: 'failed',
+            errorMessage: '视频生成成功但未返回下载链接，请重试',
+          });
+          continue;
+        }
+
+        try {
+          const localUrl = await this.downloadAndSaveFile(videoUrl, record.taskId, 'video');
+          const resolution = inputParams.resolution || '720P';
+          const duration = inputParams.duration || 5;
+          const cost = this.calculateCost(record.model, undefined, undefined, duration, resolution);
+
+          await this.updateRecord(record.taskId, {
+            status: 'succeeded',
+            outputResult: JSON.stringify({ results: [{ video_url: localUrl }] }),
+            cost: JSON.stringify(cost),
+          });
+        } catch (dlError: any) {
+          await this.updateRecord(record.taskId, {
+            status: 'failed',
+            errorMessage: `视频下载失败：${dlError.message || '未知错误'}`,
+          });
+        }
+      } else if (taskStatus === 'FAILED') {
+        const errorMsg = parseDashScopeError(result.output);
+        await this.updateRecord(record.taskId, {
+          status: 'failed',
+          errorMessage: errorMsg,
+        });
+      }
+      // PENDING / RUNNING → still in progress, skip
+    }
+  }
+
+  startVideoPoller() {
+    setInterval(() => {
+      this.pollVideoTasks().catch((err) =>
+        console.error("Video task poller error:", err)
+      );
+    }, 5000);
+    console.log("Video task poller started (interval: 5s)");
   }
 
   async getRecords(limit: number = 50) {
@@ -297,19 +573,24 @@ export class BailianService {
       .orderBy(generationRecords.createdAt)
       .limit(limit);
 
-    return records.map((record) => ({
-      id: record.id,
-      taskId: record.taskId,
-      model: record.model,
-      category: record.category,
-      status: record.status,
-      inputParams: JSON.parse(record.inputParams),
-      outputResult: record.outputResult ? JSON.parse(record.outputResult) : null,
-      cost: record.cost ? JSON.parse(record.cost) : null,
-      errorMessage: record.errorMessage,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-    }));
+    return records.map((record) => {
+      const rawParams = JSON.parse(record.inputParams);
+      // Strip internal fields from response
+      const { _dashscope_task_id, ...inputParams } = rawParams;
+      return {
+        id: record.id,
+        taskId: record.taskId,
+        model: record.model,
+        category: record.category,
+        status: record.status,
+        inputParams,
+        outputResult: record.outputResult ? JSON.parse(record.outputResult) : null,
+        cost: record.cost ? JSON.parse(record.cost) : null,
+        errorMessage: record.errorMessage,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+      };
+    });
   }
 
   async getRecordById(id: number) {
@@ -324,13 +605,15 @@ export class BailianService {
     }
 
     const r = record[0];
+    const rawParams = JSON.parse(r.inputParams);
+    const { _dashscope_task_id, ...inputParams } = rawParams;
     return {
       id: r.id,
       taskId: r.taskId,
       model: r.model,
       category: r.category,
       status: r.status,
-      inputParams: JSON.parse(r.inputParams),
+      inputParams,
       outputResult: r.outputResult ? JSON.parse(r.outputResult) : null,
       cost: r.cost ? JSON.parse(r.cost) : null,
       errorMessage: r.errorMessage,

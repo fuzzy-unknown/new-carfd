@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
 import { bailianService } from "./service";
+export { bailianService };
 
 const GenerationRequestModel = t.Object({
   model: t.String(),

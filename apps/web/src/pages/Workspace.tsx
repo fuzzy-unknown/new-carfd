@@ -7,7 +7,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
 import { Badge } from "../components/ui/badge";
-import { Loader2, Sparkles, Image as ImageIcon, Video, FileText, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Loader2, Sparkles, Image as ImageIcon, Video, FileText, CheckCircle2, XCircle, Clock, RefreshCw } from "lucide-react";
 
 interface Model {
   id: string;
@@ -64,11 +64,11 @@ export function Workspace() {
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [parameters, setParameters] = useState<Record<string, any>>({});
   const [records, setRecords] = useState<GenerationRecord[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [currentTask, setCurrentTask] = useState<{ taskId: string; status: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [regeneratingIds, setRegeneratingIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    api.bailian.getModels().then(data => {
+    api.bailian.getModels().then((data: Model[]) => {
       setModels(data);
       const categoryModels = data.filter(m => m.category === selectedCategory);
       if (categoryModels.length > 0 && !selectedModel) {
@@ -80,32 +80,14 @@ export function Workspace() {
 
   useEffect(() => {
     loadRecords();
-    const interval = setInterval(loadRecords, 5000);
+    const interval = setInterval(loadRecords, 3000);
     return () => clearInterval(interval);
   }, []);
-
-  useEffect(() => {
-    if (currentTask && (currentTask.status === 'pending' || currentTask.status === 'processing')) {
-      const interval = setInterval(() => {
-        loadRecords();
-      }, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [currentTask]);
 
   const loadRecords = async () => {
     try {
       const data = await api.bailian.getRecords();
       setRecords(data);
-      if (currentTask) {
-        const updated = data.find(r => r.taskId === currentTask.taskId);
-        if (updated) {
-          setCurrentTask({ taskId: updated.taskId, status: updated.status });
-          if (updated.status === 'succeeded' || updated.status === 'failed') {
-            setIsGenerating(false);
-          }
-        }
-      }
     } catch (error) {
       console.error('Failed to load records:', error);
     }
@@ -149,21 +131,65 @@ export function Workspace() {
   };
 
   const handleGenerate = async () => {
-    if (!selectedModel || isGenerating) return;
+    if (!selectedModel) return;
 
-    setIsGenerating(true);
+    setError(null);
     try {
-      const result = await api.bailian.generate({
+      await api.bailian.generate({
         model: selectedModel.id,
         parameters,
       });
-      setCurrentTask({ taskId: result.taskId, status: result.status });
       await loadRecords();
-    } catch (error: any) {
-      console.error('Generation failed:', error);
-      alert(`生成失败: ${error.message || '未知错误'}`);
-      setIsGenerating(false);
+    } catch (err: any) {
+      console.error('Generation failed:', err);
+      setError(err.message || '生成失败，请重试');
     }
+  };
+
+  const handleRegenerate = async (record: GenerationRecord) => {
+    setRegeneratingIds(prev => new Set(prev).add(record.id));
+    setError(null);
+    try {
+      await api.bailian.generate({
+        model: record.model,
+        parameters: record.inputParams,
+      });
+      await loadRecords();
+    } catch (err: any) {
+      console.error('Regeneration failed:', err);
+      setError(err.message || '重新生成失败，请重试');
+    } finally {
+      setRegeneratingIds(prev => {
+        const next = new Set(prev);
+        next.delete(record.id);
+        return next;
+      });
+    }
+  };
+
+  const getCategoryInfo = (category: string) => {
+    switch (category) {
+      case 'text':
+        return { label: '文生文本', icon: FileText, color: 'text-blue-500' };
+      case 'image':
+        return { label: '文生图', icon: ImageIcon, color: 'text-purple-500' };
+      case 'video':
+        return { label: '文生视频', icon: Video, color: 'text-pink-500' };
+      default:
+        return { label: category, icon: FileText, color: 'text-muted-foreground' };
+    }
+  };
+
+  const getParamSummary = (record: GenerationRecord): string => {
+    const params = record.inputParams;
+    const parts: string[] = [];
+    if (params.size) parts.push(params.size);
+    if (params.resolution) parts.push(params.resolution);
+    if (params.ratio) parts.push(params.ratio);
+    if (params.duration) parts.push(`${params.duration}秒`);
+    if (params.n) parts.push(`${params.n}张`);
+    if (params.negative_prompt) parts.push('含反向提示词');
+    return parts.join(' | ');
   };
 
   const filteredModels = models.filter(m => m.category === selectedCategory);
@@ -385,23 +411,19 @@ export function Workspace() {
                     )}
                   </div>
                 ))}
+                {error && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                    <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
                 <Button
                   onClick={handleGenerate}
-                  disabled={isGenerating}
                   size="lg"
                   className="w-full"
                 >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      生成中...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      开始生成
-                    </>
-                  )}
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  开始生成
                 </Button>
               </CardContent>
             </Card>
@@ -420,19 +442,41 @@ export function Workspace() {
                       <p className="text-muted-foreground">暂无生成记录</p>
                     </div>
                   ) : (
-                    records.map(record => (
+                    records.map(record => {
+                      const CatIcon = getCategoryInfo(record.category).icon;
+                      return (
                       <Card key={record.id} className="p-4">
                         <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2">
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-center gap-2">
                               <span className="font-medium truncate">
                                 {models.find(m => m.id === record.model)?.name || record.model}
                               </span>
                               {getStatusBadge(record.status)}
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(record.createdAt).toLocaleString()}
-                            </p>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <CatIcon className="w-3.5 h-3.5" />
+                              <span>{getCategoryInfo(record.category).label}</span>
+                              <span>·</span>
+                              <span>{new Date(record.createdAt).toLocaleString()}</span>
+                            </div>
+                            {record.inputParams?.prompt && (
+                              <p className="text-sm mt-1.5 line-clamp-2 text-foreground/80 bg-muted/50 rounded px-2 py-1">
+                                {record.inputParams.prompt}
+                              </p>
+                            )}
+                            {(() => {
+                              const summary = getParamSummary(record);
+                              return summary ? (
+                                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                  {summary.split(' | ').map((part, i) => (
+                                    <Badge key={i} variant="secondary" className="text-[10px] font-normal px-1.5 py-0">
+                                      {part}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : null;
+                            })()}
                           </div>
                         </div>
                         {record.cost && (
@@ -453,7 +497,23 @@ export function Workspace() {
                           </div>
                         )}
                         {record.errorMessage && (
-                          <p className="text-sm text-destructive mt-2">{record.errorMessage}</p>
+                          <div className="flex items-start gap-2 mt-2">
+                            <p className="text-sm text-destructive flex-1">{record.errorMessage}</p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRegenerate(record)}
+                              disabled={regeneratingIds.has(record.id)}
+                              className="shrink-0 gap-1.5"
+                            >
+                              {regeneratingIds.has(record.id) ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <RefreshCw className="w-3.5 h-3.5" />
+                              )}
+                              重新生成
+                            </Button>
+                          </div>
                         )}
                         {record.outputResult?.text && (
                           <p className="text-sm mt-3 line-clamp-3 text-muted-foreground">{record.outputResult.text}</p>
@@ -465,8 +525,12 @@ export function Workspace() {
                             ))}
                           </div>
                         )}
+                        {record.outputResult?.results?.[0]?.video_url && (
+                          <video src={record.outputResult.results[0].video_url} controls className="w-full max-w-xs mt-3 rounded" />
+                        )}
                       </Card>
-                    ))
+                    )
+                  })
                   )}
                 </div>
               </CardContent>

@@ -109,6 +109,54 @@ export class BailianService {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  async saveReferenceFile(file: File): Promise<{ id: string; type: 'image' | 'video'; url: string; name: string }> {
+    const refsDir = path.join(UPLOADS_DIR, 'refs');
+    await mkdir(refsDir, { recursive: true });
+
+    const ext = file.name.split('.').pop() || 'png';
+    const id = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    const fileName = `${id}.${ext}`;
+    const fullPath = path.join(refsDir, fileName);
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await writeFile(fullPath, buffer);
+
+    const type = ['mp4', 'mov', 'avi', 'webm'].includes(ext.toLowerCase()) ? 'video' : 'image';
+
+    return {
+      id,
+      type,
+      url: `/api/uploads/refs/${fileName}`,
+      name: file.name,
+    };
+  }
+
+  async getReferenceDataUri(localUrl: string): Promise<string> {
+    // Convert a local /api/uploads/refs/ path to base64 data URI
+    const relativePath = localUrl.replace('/api/uploads/', '');
+    const fullPath = path.join(UPLOADS_DIR, relativePath);
+
+    const file = Bun.file(fullPath);
+    if (!await file.exists()) {
+      throw new Error(`Reference file not found: ${localUrl}`);
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const ext = path.extname(fullPath).slice(1).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      webp: 'image/webp',
+      bmp: 'image/bmp',
+      mp4: 'video/mp4',
+      mov: 'video/mov',
+      webm: 'video/webm',
+    };
+    const mime = mimeMap[ext] || 'application/octet-stream';
+    return `data:${mime};base64,${buffer.toString('base64')}`;
+  }
+
   private async downloadAndSaveFile(url: string, taskId: string, fileName: string): Promise<string> {
     const taskDir = path.join(UPLOADS_DIR, taskId);
     await mkdir(taskDir, { recursive: true });
@@ -238,17 +286,23 @@ export class BailianService {
 
     const taskId = `${model}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
-    try {
-      // 创建记录
-      await this.createRecord(taskId, model, parameters);
+    // Strip internal fields for storage
+    const { ref_media: _, ...storedParams } = parameters;
 
-      // 调用百炼 API
+    if (modelConfig.category === 'video') {
+      // Video is async: call DashScope API first, then create record with task_id
+      // (avoids race condition with pollVideoTasks)
+      return await this.generateVideo(model, parameters, storedParams, taskId);
+    }
+
+    // For sync models (text, image): create record first, then call API
+    try {
+      await this.createRecord(taskId, model, storedParams);
+
       if (modelConfig.category === 'text') {
         return await this.generateText(model, parameters, taskId);
       } else if (modelConfig.category === 'image') {
         return await this.generateImage(model, parameters, taskId);
-      } else if (modelConfig.category === 'video') {
-        return await this.generateVideo(model, parameters, taskId);
       } else {
         throw new Error(`Unsupported category: ${modelConfig.category}`);
       }
@@ -380,11 +434,53 @@ export class BailianService {
   private async generateVideo(
     model: string,
     parameters: Record<string, any>,
+    storedParams: Record<string, any>,
     taskId: string
   ): Promise<GenerationResponse> {
-    // 视频生成是异步的，需要先创建任务
+    // 视频生成是异步的：先调 API 拿到 dashscope task_id，再创建记录
     let result: any;
     try {
+      const isR2V = model === 'happyhorse-1.0-r2v' || model === 'wan2.7-r2v';
+
+      // Build input with optional media array for reference-based models
+      const input: any = {
+        prompt: parameters.prompt || '',
+      };
+
+      if (isR2V && Array.isArray(parameters.ref_media) && parameters.ref_media.length > 0) {
+        // Convert local URLs to base64 data URIs for DashScope API
+        input.media = await Promise.all(
+          parameters.ref_media.map(async (ref: { url: string; type: string }) => {
+            const url = ref.url.startsWith('/api/uploads/')
+              ? await this.getReferenceDataUri(ref.url)
+              : ref.url;
+            return { type: ref.type, url };
+          })
+        );
+      }
+
+      const requestBody = {
+        model,
+        input,
+        parameters: {
+          resolution: parameters.resolution || '720P',
+          ratio: parameters.ratio || '16:9',
+          duration: parameters.duration || 5,
+          watermark: parameters.watermark !== undefined ? parameters.watermark : true,
+        },
+      };
+
+      // Log request (truncate base64 data URIs to avoid log pollution)
+      const logSafeBody = JSON.parse(JSON.stringify(requestBody));
+      if (logSafeBody.input?.media) {
+        for (const m of logSafeBody.input.media) {
+          if (typeof m.url === 'string' && m.url.startsWith('data:')) {
+            m.url = m.url.substring(0, 80) + '...[base64, truncated]';
+          }
+        }
+      }
+      console.error(`[generateVideo] Request for ${model} (task ${taskId}):`, JSON.stringify(logSafeBody, null, 2));
+
       const response = await fetch(
         'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis',
         {
@@ -394,18 +490,7 @@ export class BailianService {
             'Content-Type': 'application/json',
             'X-DashScope-Async': 'enable',
           },
-          body: JSON.stringify({
-            model,
-            input: {
-              prompt: parameters.prompt || '',
-            },
-            parameters: {
-              resolution: parameters.resolution || '720P',
-              ratio: parameters.ratio || '16:9',
-              duration: parameters.duration || 5,
-              watermark: parameters.watermark !== undefined ? parameters.watermark : true,
-            },
-          }),
+          body: JSON.stringify(requestBody),
         }
       );
 
@@ -416,29 +501,45 @@ export class BailianService {
         } catch {
           throw new Error(`HTTP ${response.status}：百炼服务返回错误`);
         }
-        throw new Error(parseDashScopeError(errorBody));
+        console.error(`[generateVideo] API error response for ${model}:`, JSON.stringify(errorBody, null, 2));
+        const errMsg = parseDashScopeError(errorBody);
+        // Include original message for known error codes to aid debugging
+        const originalMsg = errorBody?.message || errorBody?.error?.message || '';
+        throw new Error(originalMsg ? `${errMsg}（原始信息：${originalMsg}）` : errMsg);
       }
 
       result = await response.json();
 
       if (result.code || result.error?.code) {
-        throw new Error(parseDashScopeError(result));
+        console.error(`[generateVideo] API result error for ${model}:`, JSON.stringify(result, null, 2));
+        const errMsg = parseDashScopeError(result);
+        const originalMsg = result?.message || result?.error?.message || '';
+        throw new Error(originalMsg ? `${errMsg}（原始信息：${originalMsg}）` : errMsg);
       }
     } catch (error: any) {
-      // Wrap network errors with user-friendly message
-      if (error.message?.startsWith('HTTP') || error.message?.includes('百炼')) {
-        throw error;
-      }
-      throw new Error(`网络错误：无法连接百炼 API（${error.message || '未知网络错误'}）`);
+      // Create a failed record in one shot (avoid race with poller)
+      const errMsg = error.message?.startsWith('HTTP') || error.message?.includes('百炼')
+        ? error.message
+        : `网络错误：无法连接百炼 API（${error.message || '未知网络错误'}）`;
+      const modelConfig = MODELS[model];
+      await db.insert(generationRecords).values({
+        taskId,
+        model,
+        category: modelConfig?.category || 'video',
+        status: 'failed',
+        inputParams: JSON.stringify(storedParams),
+        errorMessage: errMsg,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }).catch(() => {});
+      throw new Error(errMsg);
     }
 
     if (result.output && result.output.task_id) {
-      // Store DashScope task ID in inputParams for later polling
-      await this.updateRecord(taskId, {
-        inputParams: JSON.stringify({
-          ...parameters,
-          _dashscope_task_id: result.output.task_id,
-        }),
+      // Create record WITH dashscope task_id — no race condition possible
+      await this.createRecord(taskId, model, {
+        ...storedParams,
+        _dashscope_task_id: result.output.task_id,
       });
 
       return {
@@ -547,6 +648,7 @@ export class BailianService {
           });
         }
       } else if (taskStatus === 'FAILED') {
+        console.error(`[pollVideoTasks] Task ${dashscopeTaskId} FAILED:`, JSON.stringify(result.output, null, 2));
         const errorMsg = parseDashScopeError(result.output);
         await this.updateRecord(record.taskId, {
           status: 'failed',

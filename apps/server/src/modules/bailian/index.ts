@@ -50,6 +50,23 @@ export const bailianRoute = new Elysia({ prefix: "/bailian" })
       },
     }
   )
+  .post(
+    "/upload",
+    async ({ request }) => {
+      const formData = await request.formData();
+      const file = formData.get("file");
+      if (!file || !(file instanceof File)) {
+        return { error: "请上传文件" };
+      }
+      return await bailianService.saveReferenceFile(file);
+    },
+    {
+      detail: {
+        summary: "上传参考素材（图片/视频）",
+        tags: ["百炼"],
+      },
+    }
+  )
   .get(
     "/records",
     async ({ query }) => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Switch } from "../components/ui/switch";
 import { Badge } from "../components/ui/badge";
 import { Loader2, Sparkles, Image as ImageIcon, Video, FileText, CheckCircle2, XCircle, Clock, RefreshCw } from "lucide-react";
+import { PromptEditor } from "../components/PromptEditor";
+import { ReferenceUploadZone, type ReferenceMedia } from "../components/ReferenceUploadZone";
 
 interface Model {
   id: string;
@@ -66,6 +68,33 @@ export function Workspace() {
   const [records, setRecords] = useState<GenerationRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [regeneratingIds, setRegeneratingIds] = useState<Set<number>>(new Set());
+  const [referenceMedia, setReferenceMedia] = useState<ReferenceMedia[]>([]);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<'image' | 'video' | null>(null);
+  const recordsRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(false);
+
+  const isReferenceModel = selectedModel?.id === 'happyhorse-1.0-r2v' || selectedModel?.id === 'wan2.7-r2v';
+
+  // Auto-scroll to bottom when a new generation is triggered
+  useEffect(() => {
+    if (!shouldAutoScrollRef.current || !recordsRef.current) return;
+
+    const el = recordsRef.current;
+    const doScroll = () => { el.scrollTop = el.scrollHeight; };
+
+    // Immediate scroll
+    doScroll();
+    // Re-scroll on next frame (catches layout shifts from media loading)
+    const rafId = requestAnimationFrame(() => doScroll());
+    // Final scroll after media has had time to load, then clear flag
+    const timeoutId = setTimeout(() => {
+      doScroll();
+      shouldAutoScrollRef.current = false;
+    }, 500);
+
+    return () => { cancelAnimationFrame(rafId); clearTimeout(timeoutId); };
+  }, [records]);
 
   useEffect(() => {
     api.bailian.getModels().then((data: Model[]) => {
@@ -79,6 +108,7 @@ export function Workspace() {
   }, []);
 
   useEffect(() => {
+    shouldAutoScrollRef.current = true;
     loadRecords();
     const interval = setInterval(loadRecords, 3000);
     return () => clearInterval(interval);
@@ -95,6 +125,7 @@ export function Workspace() {
 
   const handleCategoryChange = (category: string) => {
     setSelectedCategory(category);
+    setReferenceMedia([]);
     const categoryModels = models.filter(m => m.category === category);
     if (categoryModels.length > 0) {
       setSelectedModel(categoryModels[0]);
@@ -106,6 +137,7 @@ export function Workspace() {
     const model = models.find(m => m.id === modelId);
     if (model) {
       setSelectedModel(model);
+      setReferenceMedia([]);
       initParameters(model);
     }
   };
@@ -134,10 +166,19 @@ export function Workspace() {
     if (!selectedModel) return;
 
     setError(null);
+    shouldAutoScrollRef.current = true;
     try {
       await api.bailian.generate({
         model: selectedModel.id,
-        parameters,
+        parameters: {
+          ...parameters,
+          ...(isReferenceModel && referenceMedia.length > 0 && {
+            ref_media: referenceMedia.map(ref => ({
+              type: ref.type === 'video' ? 'reference_video' : 'reference_image',
+              url: ref.url,
+            })),
+          }),
+        },
       });
       await loadRecords();
     } catch (err: any) {
@@ -149,6 +190,7 @@ export function Workspace() {
   const handleRegenerate = async (record: GenerationRecord) => {
     setRegeneratingIds(prev => new Set(prev).add(record.id));
     setError(null);
+    shouldAutoScrollRef.current = true;
     try {
       await api.bailian.generate({
         model: record.model,
@@ -242,200 +284,196 @@ export function Workspace() {
 
       {selectedModel && (
         <>
-          {/* 模型选择和价格信息 */}
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>选择模型</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Select value={selectedModel.id} onValueChange={handleModelChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择模型" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredModels.map(model => {
-                      const priceLabel = model.category === 'text'
-                        ? `${formatPrice(model.pricing.inputPrice)}/万Token`
-                        : model.category === 'image'
-                        ? `${formatPrice(model.pricing.inputPrice)}/张`
-                        : model.category === 'video'
-                        ? `¥${model.pricing.inputPrice}/秒`
-                        : `${formatPrice(model.pricing.inputPrice)}/${model.pricing.unit}`;
-                      return (
-                        <SelectItem key={model.id} value={model.id}>
-                          {model.name} - {priceLabel}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-                <p className="text-sm text-muted-foreground">{selectedModel.description}</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>价格信息</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {selectedModel.category === 'video' ? (
-                    <>
-                      <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-muted-foreground">720P 价格</span>
-                        <span className="font-semibold">{formatPrice(selectedModel.pricing.inputPrice)}/秒</span>
-                      </div>
-                      {selectedModel.pricing.inputPrice1080 && (
-                        <div className="flex items-center justify-between py-2 border-b">
-                          <span className="text-muted-foreground">1080P 价格</span>
-                          <span className="font-semibold">{formatPrice(selectedModel.pricing.inputPrice1080)}/秒</span>
-                        </div>
-                      )}
-                      {selectedModel.pricing.note && (
-                        <div className="py-2 text-sm text-muted-foreground text-center">
-                          {selectedModel.pricing.note}
-                        </div>
-                      )}
-                    </>
-                  ) : selectedModel.category === 'image' ? (
-                    <>
-                      <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-muted-foreground">单张价格</span>
-                        <span className="font-semibold">{formatPrice(selectedModel.pricing.inputPrice)}/张</span>
-                      </div>
-                      {selectedModel.pricing.note && (
-                        <div className="py-2 text-sm text-muted-foreground text-center">
-                          {selectedModel.pricing.note}
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-muted-foreground">输入价格</span>
-                        <span className="font-semibold">{formatPrice(selectedModel.pricing.inputPrice)}/万Token</span>
-                      </div>
-                      {selectedModel.pricing.outputPrice && (
-                        <div className="flex items-center justify-between py-2 border-b">
-                          <span className="text-muted-foreground">输出价格</span>
-                          <span className="font-semibold">{formatPrice(selectedModel.pricing.outputPrice)}/万Token</span>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between py-2">
-                        <span className="text-muted-foreground">计费单位</span>
-                        <span className="font-semibold">{selectedModel.pricing.unit}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* 参数控制和生成记录 */}
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* 参数控制 */}
-            <Card>
-              <CardHeader>
-                <CardTitle>参数设置</CardTitle>
-                <CardDescription>配置模型生成参数</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                {selectedModel.parameters.map(param => (
-                  <div key={param.name} className="space-y-2">
-                    <Label htmlFor={param.name}>
-                      {param.description || param.name}
-                      {param.required && <span className="text-destructive ml-1">*</span>}
-                    </Label>
-                    {param.type === 'text' && (
-                      <Textarea
+            {/* 左列 */}
+            <div className="space-y-6">
+              {/* 选择模型（含价格信息） */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>选择模型</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Select value={selectedModel.id} onValueChange={handleModelChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择模型" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredModels.map(model => {
+                        const priceLabel = model.category === 'text'
+                          ? `${formatPrice(model.pricing.inputPrice)}/万Token`
+                          : model.category === 'image'
+                          ? `${formatPrice(model.pricing.inputPrice)}/张`
+                          : model.category === 'video'
+                          ? `¥${model.pricing.inputPrice}/秒`
+                          : `${formatPrice(model.pricing.inputPrice)}/${model.pricing.unit}`;
+                        return (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.name} - {priceLabel}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">{selectedModel.description}</p>
+                  {/* 价格信息 */}
+                  <div className="border-t pt-3 space-y-2">
+                    {selectedModel.category === 'video' ? (
+                      <>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">720P 价格</span>
+                          <span className="font-medium">{formatPrice(selectedModel.pricing.inputPrice)}/秒</span>
+                        </div>
+                        {selectedModel.pricing.inputPrice1080 && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">1080P 价格</span>
+                            <span className="font-medium">{formatPrice(selectedModel.pricing.inputPrice1080)}/秒</span>
+                          </div>
+                        )}
+                      </>
+                    ) : selectedModel.category === 'image' ? (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">价格</span>
+                        <span className="font-medium">{formatPrice(selectedModel.pricing.inputPrice)}/张</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">输入价格</span>
+                          <span className="font-medium">{formatPrice(selectedModel.pricing.inputPrice)}/万Token</span>
+                        </div>
+                        {selectedModel.pricing.outputPrice && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">输出价格</span>
+                            <span className="font-medium">{formatPrice(selectedModel.pricing.outputPrice)}/万Token</span>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {selectedModel.pricing.note && (
+                      <p className="text-xs text-muted-foreground text-center pt-1">{selectedModel.pricing.note}</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 参数设置 */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>参数设置</CardTitle>
+                  <CardDescription>配置模型生成参数</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {isReferenceModel && (
+                    <ReferenceUploadZone
+                      modelId={selectedModel.id}
+                      references={referenceMedia}
+                      onAdd={(ref) => setReferenceMedia(prev => [...prev, ref])}
+                      onRemove={(id) => setReferenceMedia(prev => prev.filter(r => r.id !== id))}
+                    />
+                  )}
+                  {selectedModel.parameters.map(param => (
+                    <div key={param.name} className="space-y-2">
+                      <Label htmlFor={param.name}>
+                        {param.description || param.name}
+                        {param.required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      {param.type === 'text' && param.name === 'prompt' && isReferenceModel ? (
+                        <PromptEditor
+                          references={referenceMedia}
+                          modelId={selectedModel.id}
+                          value={parameters[param.name] || ''}
+                          onChange={(val) => handleParameterChange(param.name, val)}
+                          placeholder={param.description}
+                        />
+                      ) : param.type === 'text' && (
+                        <Textarea
+                          id={param.name}
+                          value={parameters[param.name] || ''}
+                          onChange={(e) => handleParameterChange(param.name, e.target.value)}
+                          placeholder={param.description}
+                          rows={4}
+                        />
+                      )}
+                      {param.type === 'number' && (
+                        <div className="flex items-center gap-3">
+                      <input
+                        type="number"
                         id={param.name}
                         value={parameters[param.name] || ''}
-                        onChange={(e) => handleParameterChange(param.name, e.target.value)}
-                        placeholder={param.description}
-                        rows={4}
+                        onChange={(e) => handleParameterChange(param.name, Number(e.target.value))}
+                        min={param.min}
+                        max={param.max}
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none"
                       />
-                    )}
-                    {param.type === 'number' && (
-                      <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      id={param.name}
-                      value={parameters[param.name] || ''}
-                      onChange={(e) => handleParameterChange(param.name, Number(e.target.value))}
-                      min={param.min}
-                      max={param.max}
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none"
-                    />
-                    {param.min !== undefined && (
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        最小: {param.min}
-                      </span>
-                    )}
-                    {param.max !== undefined && (
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        最大: {param.max}
-                      </span>
-                    )}
-                  </div>
-                )}
-                    {param.type === 'select' && (
-                      <Select
-                        value={parameters[param.name] || ''}
-                        onValueChange={(value) => handleParameterChange(param.name, value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={param.description} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {param.options?.map(option => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    {param.type === 'boolean' && (
-                      <div className="flex items-center gap-3">
-                        <Switch
-                          id={param.name}
-                          checked={parameters[param.name] || false}
-                          onCheckedChange={(checked) => handleParameterChange(param.name, checked)}
-                        />
-                        <Label htmlFor={param.name} className="cursor-pointer">
-                          {param.description}
-                        </Label>
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {error && (
-                  <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                    <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                    <span>{error}</span>
-                  </div>
-                )}
-                <Button
-                  onClick={handleGenerate}
-                  size="lg"
-                  className="w-full"
-                >
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  开始生成
-                </Button>
-              </CardContent>
-            </Card>
+                      {param.min !== undefined && (
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          最小: {param.min}
+                        </span>
+                      )}
+                      {param.max !== undefined && (
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          最大: {param.max}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                      {param.type === 'select' && (
+                        <Select
+                          value={parameters[param.name] || ''}
+                          onValueChange={(value) => handleParameterChange(param.name, value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={param.description} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {param.options?.map(option => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      {param.type === 'boolean' && (
+                        <div className="flex items-center gap-3">
+                          <Switch
+                            id={param.name}
+                            checked={parameters[param.name] || false}
+                            onCheckedChange={(checked) => handleParameterChange(param.name, checked)}
+                          />
+                          <Label htmlFor={param.name} className="cursor-pointer">
+                            {param.description}
+                          </Label>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {error && (
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                      <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>{error}</span>
+                    </div>
+                  )}
+                  <Button
+                    onClick={handleGenerate}
+                    size="lg"
+                    className="w-full"
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    开始生成
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
 
-            {/* 生成记录 */}
+            {/* 右列 - 生成记录 */}
             <Card>
               <CardHeader>
                 <CardTitle>生成记录</CardTitle>
                 <CardDescription>查看历史生成记录和花费</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+                <div className="space-y-3 overflow-y-auto pr-2 max-h-[calc(100vh-320px)]" ref={recordsRef}>
                   {records.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-center">
                       <Clock className="w-12 h-12 text-muted-foreground/50 mb-3" />
@@ -521,12 +559,33 @@ export function Workspace() {
                         {record.outputResult?.images && (
                           <div className="flex gap-2 mt-3">
                             {record.outputResult.images.map((img: any, i: number) => (
-                              <img key={i} src={img.image} alt="" className="w-20 h-20 object-cover rounded" />
+                              <img
+                                key={i}
+                                src={img.image}
+                                alt=""
+                                className="w-20 h-20 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                                onClick={() => { setPreviewUrl(img.image); setPreviewType('image'); }}
+                                onLoad={() => {
+                                  if (shouldAutoScrollRef.current && recordsRef.current) {
+                                    recordsRef.current.scrollTop = recordsRef.current.scrollHeight;
+                                  }
+                                }}
+                              />
                             ))}
                           </div>
                         )}
                         {record.outputResult?.results?.[0]?.video_url && (
-                          <video src={record.outputResult.results[0].video_url} controls className="w-full max-w-xs mt-3 rounded" />
+                          <video
+                            src={record.outputResult.results[0].video_url}
+                            controls
+                            className="w-full max-w-xs mt-3 rounded cursor-pointer"
+                            onClick={() => { setPreviewUrl(record.outputResult.results[0].video_url); setPreviewType('video'); }}
+                            onLoadedMetadata={() => {
+                              if (shouldAutoScrollRef.current && recordsRef.current) {
+                                recordsRef.current.scrollTop = recordsRef.current.scrollHeight;
+                              }
+                            }}
+                          />
                         )}
                       </Card>
                     )
@@ -537,6 +596,31 @@ export function Workspace() {
             </Card>
           </div>
         </>
+      )}
+
+      {/* Fullscreen preview overlay — no close button, no keyboard nav, click mask to close */}
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
+          onClick={() => { setPreviewUrl(null); setPreviewType(null); }}
+        >
+          {previewType === 'image' ? (
+            <img
+              src={previewUrl}
+              alt=""
+              className="max-w-[90vw] max-h-[90vh] object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <video
+              src={previewUrl}
+              controls
+              autoPlay
+              className="max-w-[90vw] max-h-[90vh]"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
+        </div>
       )}
     </div>
   );

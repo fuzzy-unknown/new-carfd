@@ -354,7 +354,6 @@ export const MODELS: Record<string, ModelConfig> = {
     parameters: [
       { name: 'prompt', type: 'text', required: true, description: '文本提示词' },
       { name: 'negative_prompt', type: 'text', description: '反向提示词' },
-      { name: 'media_urls', type: 'text', description: '参考素材URLs（逗号分隔）' },
       { name: 'resolution', type: 'select', defaultValue: '720P', description: '视频分辨率', options: [
         { label: '720P (0.6元/秒)', value: '720P' },
         { label: '1080P (1元/秒)', value: '1080P' },

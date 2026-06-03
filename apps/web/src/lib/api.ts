@@ -35,5 +35,13 @@ export const api = {
     getRecords: () => fetch(`${API_BASE}/bailian/records`).then(handleResponse),
     getRecordById: (id: number) => fetch(`${API_BASE}/bailian/records/${id}`).then(handleResponse),
     getStatistics: () => fetch(`${API_BASE}/bailian/statistics`).then(handleResponse),
+    upload: (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return fetch(`${API_BASE}/bailian/upload`, {
+        method: 'POST',
+        body: formData,
+      }).then(handleResponse);
+    },
   },
 };

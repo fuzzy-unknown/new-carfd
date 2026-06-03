@@ -38,7 +38,7 @@ async function start() {
     .listen(PORT);
 
   console.log(`Server running at http://localhost:${app.server!.port}`);
-  console.log(`OpenAPI documentation at http://localhost:${app.server!.port}/api/swagger`);
+  console.log(`OpenAPI documentation at http://localhost:${app.server!.port}/api/openapi`);
 }
 
 start();

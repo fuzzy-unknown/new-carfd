@@ -9,6 +9,10 @@ import { parseDashScopeError } from "../../utils/dashscope-errors";
 
 const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || "";
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export interface GenerationRequest {
   model: string;
   parameters: Record<string, any>;
@@ -766,7 +770,7 @@ export class BailianService {
 对于每个场景，请提供：
 1. title: 简洁的场景标题（中文）
 2. description: 场景描述，描述该场景中发生的视觉内容和情节（中文），必须使用角色名（如"林峰"）而非泛指（如"男主角"），如果该场景有对话请写出主要台词对白
-3. videoPrompt: 一段适合文生视频模型的英文提示词（Prompt），详细描述该场景的视觉内容、镜头运动、光影氛围等，使用角色名描述动作。如果有对话台词，必须在 prompt 中用引号写出说话的台词内容，例如：Lin Feng walks up to Xiao Yu and says "We need to leave now, it's not safe here." 注意台词需要和 description 中的中文对白对应
+3. videoPrompt: 一段适合文生视频模型的提示词（Prompt），主要使用英文描述视觉内容、镜头运动、光影氛围等，但**角色名必须使用中文**（如"林峰"而非"Lin Feng"），以便后续与角色参考图关联。如果有对话台词，必须在 prompt 中用引号写出说话的台词内容，例如：林峰 walks up to 小雨 and says "We need to leave now, it's not safe here." 注意台词需要和 description 中的中文对白对应
 4. characterNames: 该场景中出现的角色名列表（字符串数组），从下方角色列表中选择对应角色的 name 值，该场景中出现哪些角色就填哪些，无角色则为空数组。此字段非常重要！
 
 对于每个角色，请提供：
@@ -776,9 +780,9 @@ export class BailianService {
 
 要求：
 - 每个场景都应是一个独立的视频片段，有明确的视觉焦点
-- videoPrompt 必须是英文，面向文生视频模型使用
-- 角色一致性：每个角色出现时附带外貌特征描述（服装、发型等），确保模型不混淆角色。例如用 "Lin Feng, wearing a black trench coat, walks in" 而非 "Lin Feng walks in"
-- 对话清晰：台词用双引号括起来，格式：CharacterName says "dialogue text here"
+- videoPrompt 主要使用英文，但角色名必须使用中文名（与 characters 中的 name 一致）
+- 角色一致性：每个角色出现时附带外貌特征描述（服装、发型等），确保模型不混淆角色。例如用 "林峰, wearing a black trench coat, walks in" 而非 "He walks in"
+- 对话清晰：台词用双引号括起来，格式：角色名 says "dialogue text here"（角色名用中文）
 - 不要背景音乐：不要 BGM，不要 background music，不要 instrumental music，只有人声和动作音效
 - 动作音效：动作场面必须描述音效，如：the sound of a fist hitting, glass breaking, footsteps echoing
 - 节奏合理：动作场景用短句加快节奏，对话场景平稳描述
@@ -791,7 +795,7 @@ export class BailianService {
     {
       "title": "场景标题",
       "description": "场景描述，包括角色台词",
-      "videoPrompt": "English video prompt for this scene with character dialogue in quotes like 'Hello'",
+      "videoPrompt": "Video prompt in English but with Chinese character names, e.g. 林峰 walks into the room and says 'Hello'",
       "characterNames": ["角色名1", "角色名2"]
     }
   ],
@@ -959,16 +963,28 @@ export class BailianService {
       if (refChars.length > 0) {
         const media: { type: string; url: string }[] = [];
         let enhancedPrompt = '';
+        const nameToImageTag: Map<string, string> = new Map();
         for (let i = 0; i < refChars.length; i++) {
           const c = refChars[i];
           try {
             const dataUri = await this.getReferenceDataUri(c.referenceImageUrl!);
             media.push({ type: 'reference_image', url: dataUri });
             enhancedPrompt += `[Image ${i + 1}] is ${c.name}. `;
+            nameToImageTag.set(c.name, `[Image ${i + 1}]`);
           } catch { /* skip if reference file missing */ }
         }
         if (media.length > 0) {
-          prompt = enhancedPrompt + scene.videoPrompt;
+          // 将 videoPrompt 中的角色名替换为 [Image N] 标记，按名字长度降序避免误替换
+          let replacedPrompt = scene.videoPrompt;
+          const sortedNames = [...nameToImageTag.entries()]
+            .sort((a, b) => b[0].length - a[0].length);
+          for (const [name, tag] of sortedNames) {
+            replacedPrompt = replacedPrompt.replace(
+              new RegExp(escapeRegExp(name), 'g'),
+              tag
+            );
+          }
+          prompt = enhancedPrompt + replacedPrompt;
           effectiveModel = 'happyhorse-1.0-r2v';
           input.prompt = prompt;
           input.media = media;

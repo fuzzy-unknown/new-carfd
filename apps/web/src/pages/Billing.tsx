@@ -214,29 +214,38 @@ export function Billing() {
           <CardDescription>最近30天的消费情况</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {stats.dailyTrend.map((day) => {
-              const maxCost = Math.max(...stats.dailyTrend.map(d => d.cost), 0.01);
-              const height = day.cost > 0 ? Math.max((day.cost / maxCost) * 100, 1) : 0;
-              const date = new Date(day.date);
-              const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+          {stats.dailyTrend.every(d => d.cost === 0) ? (
+            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+              <Activity className="w-10 h-10 mb-2 opacity-30" />
+              <p className="text-sm">暂无消费数据</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {stats.dailyTrend
+                .filter(day => day.cost > 0)
+                .map((day) => {
+                  const maxCost = Math.max(...stats.dailyTrend.map(d => d.cost), 0.01);
+                  const widthPct = Math.max((day.cost / maxCost) * 100, 2);
+                  const date = new Date(day.date + "T00:00:00");
+                  const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
 
-              return (
-                <div key={day.date} className="flex items-center gap-3 text-sm">
-                  <span className="w-12 text-muted-foreground text-xs">{dateStr}</span>
-                  <div className="flex-1 h-6 bg-muted rounded-sm overflow-hidden flex items-end">
-                    <div
-                      className="bg-primary/60 rounded-sm transition-all"
-                      style={{ height: `${height}%` }}
-                    />
-                  </div>
-                  <span className="w-20 text-right font-medium">
-                    {day.cost > 0 ? formatPrice(day.cost) : '-'}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                  return (
+                    <div key={day.date} className="flex items-center gap-3 text-sm group">
+                      <span className="w-12 shrink-0 text-muted-foreground text-xs">{dateStr}</span>
+                      <div className="flex-1 h-7 bg-muted rounded-sm overflow-hidden relative">
+                        <div
+                          className="absolute inset-y-0 left-0 bg-primary/60 rounded-sm transition-all group-hover:bg-primary/80"
+                          style={{ width: `${widthPct}%` }}
+                        />
+                      </div>
+                      <span className="w-20 shrink-0 text-right font-medium text-xs">
+                        {formatPrice(day.cost)}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

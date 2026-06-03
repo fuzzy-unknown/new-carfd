@@ -152,4 +152,15 @@ export const api = {
       }).then(handleResponse);
     },
   },
+
+  assets: {
+    getAssets: (params?: { type?: string; source?: string }) => {
+      const query = new URLSearchParams();
+      if (params?.type) query.set("type", params.type);
+      if (params?.source) query.set("source", params.source);
+      const qs = query.toString();
+      return fetch(`${API_BASE}/assets${qs ? `?${qs}` : ""}`).then(handleResponse);
+    },
+    getStats: () => fetch(`${API_BASE}/assets/stats`).then(handleResponse),
+  },
 };

@@ -3,6 +3,7 @@ import { Navbar } from "./components/Navbar";
 import { Workspace } from "./pages/Workspace";
 import { Explore } from "./pages/Explore";
 import { Billing } from "./pages/Billing";
+import { Assets } from "./pages/Assets";
 
 export function App() {
   return (
@@ -12,6 +13,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<Workspace />} />
           <Route path="/explore" element={<Explore />} />
+          <Route path="/assets" element={<Assets />} />
           <Route path="/billing" element={<Billing />} />
         </Routes>
       </main>

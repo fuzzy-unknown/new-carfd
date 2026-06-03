@@ -5,6 +5,7 @@ import { healthRoute } from "./modules/health";
 import { userRoute } from "./modules/user";
 import { bailianRoute, bailianService } from "./modules/bailian";
 import { novelVideoRoute } from "./modules/novel-video";
+import { assetsRoute } from "./modules/assets";
 import { initializeDatabase } from "./db";
 
 import path from "path";
@@ -36,6 +37,7 @@ async function start() {
             { name: "用户", description: "用户管理端点" },
             { name: "百炼", description: "百炼 AI 模型端点" },
             { name: "小说视频", description: "小说生成视频端点" },
+            { name: "资产", description: "资产库管理端点" },
           ],
         },
       })
@@ -44,6 +46,7 @@ async function start() {
     .use(userRoute)
     .use(bailianRoute)
     .use(novelVideoRoute)
+    .use(assetsRoute)
     // Serve uploaded files
     .get("/uploads/*", async ({ params, set }) => {
       const filePath = path.join(UPLOADS_DIR, params["*"]);

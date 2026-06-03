@@ -7,13 +7,14 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run scripts/dev.ts",
-    "dev:server": "bun run scripts/dev-server.ts",
-    "dev:web": "bun run scripts/dev-web.ts",
+    "dev": "concurrently -n server,web -c blue,green --kill-others \"bun run dev:server\" \"bun run dev:web\"",
+    "dev:server": "bun run --cwd apps/server dev",
+    "dev:web": "bun run --cwd apps/web dev",
     "build": "bun run --cwd apps/web build"
   },
   "devDependencies": {
+    "@types/bun": "^1.3.14",
     "@types/node": "^25.9.1",
-    "@types/bun": "^1.3.14"
+    "concurrently": "^10.0.3"
   }
 }

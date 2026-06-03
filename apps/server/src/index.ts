@@ -9,7 +9,7 @@ import { initializeDatabase } from "./db";
 import path from "path";
 import { UPLOADS_DIR } from "./config/paths";
 
-const PORT = Number(process.env.PORT) || 5001;
+const PORT = Number(process.env.PORT) || 3000;
 
 async function start() {
   await initializeDatabase();
@@ -19,7 +19,7 @@ async function start() {
 
   const app = new Elysia({ prefix: "/api" })
     .use(cors({
-      origin: ["http://localhost:5000", process.env.FRONTEND_URL].filter(Boolean) as string[],
+      origin: ["http://localhost:5173", process.env.FRONTEND_URL].filter(Boolean) as string[],
       credentials: true,
     }))
     .use(

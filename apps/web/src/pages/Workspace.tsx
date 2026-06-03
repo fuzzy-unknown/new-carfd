@@ -4,7 +4,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
-import { Select } from "../components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
 import { Badge } from "../components/ui/badge";
 import { Loader2, Sparkles, Image as ImageIcon, Video, FileText, CheckCircle2, XCircle, Clock } from "lucide-react";
@@ -60,7 +60,7 @@ const MODEL_CATEGORIES = [
 
 export function Workspace() {
   const [models, setModels] = useState<Model[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState('text');
+  const [selectedCategory, setSelectedCategory] = useState('video');
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [parameters, setParameters] = useState<Record<string, any>>({});
   const [records, setRecords] = useState<GenerationRecord[]>([]);
@@ -216,24 +216,26 @@ export function Workspace() {
                 <CardTitle>选择模型</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Select
-                  value={selectedModel.id}
-                  onChange={(e) => handleModelChange((e.target as HTMLSelectElement).value)}
-                >
-                  {filteredModels.map(model => {
-                    const priceLabel = model.category === 'text'
-                      ? `${formatPrice(model.pricing.inputPrice)}/万Token`
-                      : model.category === 'image'
-                      ? `${formatPrice(model.pricing.inputPrice)}/张`
-                      : model.category === 'video'
-                      ? `¥${model.pricing.inputPrice}/秒`
-                      : `${formatPrice(model.pricing.inputPrice)}/${model.pricing.unit}`;
-                    return (
-                      <option key={model.id} value={model.id}>
-                        {model.name} - {priceLabel}
-                      </option>
-                    );
-                  })}
+                <Select value={selectedModel.id} onValueChange={handleModelChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择模型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredModels.map(model => {
+                      const priceLabel = model.category === 'text'
+                        ? `${formatPrice(model.pricing.inputPrice)}/万Token`
+                        : model.category === 'image'
+                        ? `${formatPrice(model.pricing.inputPrice)}/张`
+                        : model.category === 'video'
+                        ? `¥${model.pricing.inputPrice}/秒`
+                        : `${formatPrice(model.pricing.inputPrice)}/${model.pricing.unit}`;
+                      return (
+                        <SelectItem key={model.id} value={model.id}>
+                          {model.name} - {priceLabel}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
                 </Select>
                 <p className="text-sm text-muted-foreground">{selectedModel.description}</p>
               </CardContent>
@@ -347,11 +349,20 @@ export function Workspace() {
                 )}
                     {param.type === 'select' && (
                       <Select
-                        id={param.name}
                         value={parameters[param.name] || ''}
-                        onChange={(e) => handleParameterChange(param.name, (e.target as HTMLSelectElement).value)}
-                        options={param.options}
-                      />
+                        onValueChange={(value) => handleParameterChange(param.name, value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={param.description} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {param.options?.map(option => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     )}
                     {param.type === 'boolean' && (
                       <div className="flex items-center gap-3">

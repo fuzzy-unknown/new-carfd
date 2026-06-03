@@ -10,7 +10,7 @@ import {
   Sparkles, Loader2, BookOpen, Play, Clock, CheckCircle2,
   XCircle, Video, ChevronDown, Upload, RefreshCw,
   AlertTriangle, Film, MapPin, Users, Clapperboard,
-  Pencil, Save, X,
+  Pencil, Save, X, ImageIcon,
 } from "lucide-react";
 
 // ===== Types matching backend DTOs =====
@@ -45,6 +45,7 @@ interface LocationDTO {
   profile: Record<string, any> | null;
   scenePrompt: string;
   negativePrompt: string | null;
+  referenceImageUrl: string | null;
   locked: boolean;
 }
 
@@ -130,6 +131,7 @@ export function Explore() {
   const [error, setError] = useState<string | null>(null);
   const [pastProjects, setPastProjects] = useState<ProjectSummary[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [highlightShotIndex, setHighlightShotIndex] = useState<number | null>(null);
 
   // Load past projects on mount
@@ -299,6 +301,38 @@ export function Explore() {
     }
   };
 
+  const handleGenerateRef = async (characterId: number) => {
+    const res: any = await api.novelVideo.generateCharacterReference(characterId);
+    if (res?.data) {
+      setProject((prev) =>
+        prev
+          ? {
+              ...prev,
+              characters: prev.characters.map((c) =>
+                c.id === characterId ? res.data : c
+              ),
+            }
+          : null
+      );
+    }
+  };
+
+  const handleGenerateLocationRef = async (locationId: number) => {
+    const res: any = await api.novelVideo.generateLocationReference(locationId);
+    if (res?.data) {
+      setProject((prev) =>
+        prev
+          ? {
+              ...prev,
+              locations: prev.locations.map((l) =>
+                l.id === locationId ? res.data : l
+              ),
+            }
+          : null
+      );
+    }
+  };
+
   const loadProject = async (id: number) => {
     setLoading(true);
     try {
@@ -429,6 +463,8 @@ export function Explore() {
                   onToggleLock={(id, locked) => handleToggleLock("character", id, locked)}
                   onUpdate={handleUpdateCharacter}
                   onUpload={handleUploadRef}
+                  onGenerateRef={handleGenerateRef}
+                  onImagePreview={setImagePreviewUrl}
                   loading={loading}
                 />
               )}
@@ -438,6 +474,8 @@ export function Explore() {
                   onGenerate={handleGenerateLocations}
                   onToggleLock={(id, locked) => handleToggleLock("location", id, locked)}
                   onUpdate={handleUpdateLocation}
+                  onGenerateRef={handleGenerateLocationRef}
+                  onImagePreview={setImagePreviewUrl}
                   loading={loading}
                 />
               )}
@@ -447,6 +485,7 @@ export function Explore() {
                   onGenerate={handleGenerateStoryboard}
                   onUpdateShot={handleUpdateShot}
                   highlightShotIndex={highlightShotIndex}
+                  onImagePreview={setImagePreviewUrl}
                   loading={loading}
                 />
               )}
@@ -467,6 +506,7 @@ export function Explore() {
                   onRebuildPrompts={handleRebuildPrompts}
                   onGenerateShot={handleGenerateShot}
                   onPreview={setPreviewUrl}
+                  onImagePreview={setImagePreviewUrl}
                   loading={loading}
                 />
               )}
@@ -486,6 +526,21 @@ export function Explore() {
             controls
             autoPlay
             className="max-w-[90vw] max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+
+      {/* Fullscreen image preview */}
+      {imagePreviewUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center cursor-zoom-out"
+          onClick={() => setImagePreviewUrl(null)}
+        >
+          <img
+            src={imagePreviewUrl}
+            alt="预览"
+            className="max-w-[90vw] max-h-[90vh] object-contain"
             onClick={(e) => e.stopPropagation()}
           />
         </div>
@@ -705,13 +760,15 @@ function EditableField({
 // ===== Character Step =====
 
 function CharacterStep({
-  project, onGenerate, onToggleLock, onUpdate, onUpload, loading,
+  project, onGenerate, onToggleLock, onUpdate, onUpload, onGenerateRef, onImagePreview, loading,
 }: {
   project: ProjectDetail;
   onGenerate: () => void;
   onToggleLock: (id: number, locked: boolean) => void;
   onUpdate: (id: number, patch: Record<string, any>) => void;
   onUpload: (charId: number, file: File) => Promise<void>;
+  onGenerateRef: (charId: number) => Promise<void>;
+  onImagePreview: (url: string) => void;
   loading: boolean;
 }) {
   return (
@@ -734,7 +791,7 @@ function CharacterStep({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {project.characters.map((char) => (
-          <CharacterCard key={char.id} character={char} onToggleLock={onToggleLock} onUpdate={onUpdate} onUpload={onUpload} />
+          <CharacterCard key={char.id} character={char} onToggleLock={onToggleLock} onUpdate={onUpdate} onUpload={onUpload} onGenerateRef={onGenerateRef} onImagePreview={onImagePreview} />
         ))}
       </div>
     </div>
@@ -742,13 +799,16 @@ function CharacterStep({
 }
 
 function CharacterCard({
-  character, onToggleLock, onUpdate, onUpload,
+  character, onToggleLock, onUpdate, onUpload, onGenerateRef, onImagePreview,
 }: {
   character: CharacterDTO;
   onToggleLock: (id: number, locked: boolean) => void;
   onUpdate: (id: number, patch: Record<string, any>) => void;
   onUpload: (charId: number, file: File) => Promise<void>;
+  onGenerateRef: (charId: number) => Promise<void>;
+  onImagePreview: (url: string) => void;
 }) {
+  const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -758,6 +818,11 @@ function CharacterCard({
     setUploading(true);
     try { await onUpload(character.id, file); } finally { setUploading(false); }
     e.target.value = "";
+  };
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try { await onGenerateRef(character.id); } finally { setGenerating(false); }
   };
 
   return (
@@ -776,30 +841,75 @@ function CharacterCard({
         {character.role && <Badge variant="outline" className="w-fit text-[10px]">{character.role}</Badge>}
       </CardHeader>
       <CardContent className="space-y-2">
-        {/* Reference image */}
+        {/* Reference image area */}
         {character.referenceImageUrl ? (
           <div className="relative group">
-            <img src={character.referenceImageUrl} alt={character.name} className="w-full h-28 object-cover rounded-lg border" />
-            <div
-              onClick={() => inputRef.current?.click()}
-              className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center cursor-pointer"
-            >
-              <span className="text-white text-xs">更换图片</span>
+            <img
+              src={character.referenceImageUrl}
+              alt={character.name}
+              className="w-full h-28 object-cover rounded-lg border cursor-zoom-in"
+              onClick={() => onImagePreview(character.referenceImageUrl!)}
+            />
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-2 pointer-events-none group-hover:pointer-events-auto">
+              <button
+                onClick={() => onImagePreview(character.referenceImageUrl!)}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-white/90 text-xs font-medium hover:bg-white transition-colors pointer-events-auto"
+              >
+                <ImageIcon className="w-3 h-3" />
+                查看大图
+              </button>
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-white/90 text-xs font-medium hover:bg-white transition-colors pointer-events-auto"
+              >
+                {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                重新生成
+              </button>
+              <button
+                onClick={() => inputRef.current?.click()}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-white/90 text-xs font-medium hover:bg-white transition-colors pointer-events-auto"
+              >
+                <Upload className="w-3 h-3" />
+                换图
+              </button>
             </div>
           </div>
         ) : (
-          <div
-            onClick={() => inputRef.current?.click()}
-            className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
-          >
-            {uploading ? (
-              <Loader2 className="w-5 h-5 mx-auto animate-spin text-muted-foreground" />
-            ) : (
-              <>
-                <Upload className="w-5 h-5 mx-auto mb-1 text-muted-foreground" />
-                <p className="text-xs text-muted-foreground">上传参考图</p>
-              </>
-            )}
+          <div className="border-2 border-dashed rounded-lg divide-y divide-dashed">
+            {/* Primary: generate from prompt */}
+            <button
+              onClick={handleGenerate}
+              disabled={generating || !character.identityPrompt}
+              className="w-full p-3 flex flex-col items-center gap-1 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {generating ? (
+                <Loader2 className="w-5 h-5 animate-spin text-primary" />
+              ) : (
+                <Sparkles className="w-5 h-5 text-primary" />
+              )}
+              <span className="text-xs font-medium">
+                {generating ? "生成中..." : "从提示词生成参考图"}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                基于 identityPrompt 自动生成
+              </span>
+            </button>
+            {/* Secondary: upload custom image */}
+            <button
+              onClick={() => inputRef.current?.click()}
+              disabled={uploading}
+              className="w-full p-3 flex flex-col items-center gap-1 hover:bg-muted/50 transition-colors"
+            >
+              {uploading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              ) : (
+                <Upload className="w-4 h-4 text-muted-foreground" />
+              )}
+              <span className="text-[10px] text-muted-foreground">
+                或上传自定义图片
+              </span>
+            </button>
           </div>
         )}
         <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
@@ -836,12 +946,14 @@ function CharacterCard({
 // ===== Location Step =====
 
 function LocationStep({
-  project, onGenerate, onToggleLock, onUpdate, loading,
+  project, onGenerate, onToggleLock, onUpdate, onGenerateRef, onImagePreview, loading,
 }: {
   project: ProjectDetail;
   onGenerate: () => void;
   onToggleLock: (id: number, locked: boolean) => void;
   onUpdate: (id: number, patch: Record<string, any>) => void;
+  onGenerateRef: (locId: number) => Promise<void>;
+  onImagePreview: (url: string) => void;
   loading: boolean;
 }) {
   return (
@@ -864,74 +976,143 @@ function LocationStep({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {project.locations.map((loc) => (
-          <Card key={loc.id}>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">{loc.name}</CardTitle>
-                <div className="flex items-center gap-2">
-                  <Label className="text-[10px] text-muted-foreground">锁定</Label>
-                  <Switch
-                    checked={loc.locked}
-                    onCheckedChange={() => onToggleLock(loc.id, loc.locked)}
-                  />
-                </div>
-              </div>
-              <div className="flex gap-1.5">
-                <Badge variant="outline" className="text-[10px]">{loc.type}</Badge>
-                {loc.profile?.era && <Badge variant="outline" className="text-[10px]">{loc.profile.era}</Badge>}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {loc.profile && (
-                <div className="text-xs text-muted-foreground space-y-0.5">
-                  <p>📍 {loc.profile.location}</p>
-                  <p>🎭 {loc.profile.atmosphere}</p>
-                  <p>💡 {loc.profile.visualRules?.lighting}</p>
-                  <p>🏛️ {loc.profile.visualRules?.architecture}</p>
-                  <p>🧱 {loc.profile.visualRules?.floor}</p>
-                  <p>🎨 {loc.profile.visualRules?.colorPalette?.join(" / ")}</p>
-                  <p>🖼️ {loc.profile.visualRules?.backgroundElements?.join("、")}</p>
-                  {loc.profile.cameraRules && (
-                    <div className="mt-1 border-t pt-1 space-y-0.5">
-                      <p className="font-medium text-[10px]">📷 摄影机规则</p>
-                      <p>轴线：{loc.profile.cameraRules.axisDirection}</p>
-                      <p>允许：{loc.profile.cameraRules.allowedAngles?.join("、")}</p>
-                      <p>禁止：{loc.profile.cameraRules.forbiddenAngles?.join("、")}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <EditableField
-                label="scenePrompt（场景视觉描述）"
-                value={loc.scenePrompt}
-                multiline
-                onSave={(val) => onUpdate(loc.id, { scenePrompt: val })}
-              />
-
-              <EditableField
-                label="negativePrompt（负面约束）"
-                value={loc.negativePrompt}
-                multiline
-                onSave={(val) => onUpdate(loc.id, { negativePrompt: val })}
-              />
-            </CardContent>
-          </Card>
+          <LocationCard key={loc.id} location={loc} onToggleLock={onToggleLock} onUpdate={onUpdate} onGenerateRef={onGenerateRef} onImagePreview={onImagePreview} />
         ))}
       </div>
     </div>
   );
 }
 
+function LocationCard({
+  location, onToggleLock, onUpdate, onGenerateRef, onImagePreview,
+}: {
+  location: LocationDTO;
+  onToggleLock: (id: number, locked: boolean) => void;
+  onUpdate: (id: number, patch: Record<string, any>) => void;
+  onGenerateRef: (locId: number) => Promise<void>;
+  onImagePreview: (url: string) => void;
+}) {
+  const [generating, setGenerating] = useState(false);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try { await onGenerateRef(location.id); } finally { setGenerating(false); }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">{location.name}</CardTitle>
+          <div className="flex items-center gap-2">
+            <Label className="text-[10px] text-muted-foreground">锁定</Label>
+            <Switch
+              checked={location.locked}
+              onCheckedChange={() => onToggleLock(location.id, location.locked)}
+            />
+          </div>
+        </div>
+        <div className="flex gap-1.5">
+          <Badge variant="outline" className="text-[10px]">{location.type}</Badge>
+          {location.profile?.era && <Badge variant="outline" className="text-[10px]">{location.profile.era}</Badge>}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {/* Reference image area */}
+        {location.referenceImageUrl ? (
+          <div className="relative group">
+            <img
+              src={location.referenceImageUrl}
+              alt={location.name}
+              className="w-full h-28 object-cover rounded-lg border cursor-zoom-in"
+              onClick={() => onImagePreview(location.referenceImageUrl!)}
+            />
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-2 pointer-events-none group-hover:pointer-events-auto">
+              <button
+                onClick={() => onImagePreview(location.referenceImageUrl!)}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-white/90 text-xs font-medium hover:bg-white transition-colors pointer-events-auto"
+              >
+                <ImageIcon className="w-3 h-3" />
+                查看大图
+              </button>
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-white/90 text-xs font-medium hover:bg-white transition-colors pointer-events-auto"
+              >
+                {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                重新生成
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={handleGenerate}
+            disabled={generating || !location.scenePrompt}
+            className="w-full border-2 border-dashed rounded-lg p-3 flex flex-col items-center gap-1 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {generating ? (
+              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+            ) : (
+              <Sparkles className="w-5 h-5 text-primary" />
+            )}
+            <span className="text-xs font-medium">
+              {generating ? "生成中..." : "从提示词生成参考图"}
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              基于 scenePrompt 自动生成
+            </span>
+          </button>
+        )}
+
+        {location.profile && (
+          <div className="text-xs text-muted-foreground space-y-0.5">
+            <p>📍 {location.profile.location}</p>
+            <p>🎭 {location.profile.atmosphere}</p>
+            <p>💡 {location.profile.visualRules?.lighting}</p>
+            <p>🏛️ {location.profile.visualRules?.architecture}</p>
+            <p>🧱 {location.profile.visualRules?.floor}</p>
+            <p>🎨 {location.profile.visualRules?.colorPalette?.join(" / ")}</p>
+            <p>🖼️ {location.profile.visualRules?.backgroundElements?.join("、")}</p>
+            {location.profile.cameraRules && (
+              <div className="mt-1 border-t pt-1 space-y-0.5">
+                <p className="font-medium text-[10px]">📷 摄影机规则</p>
+                <p>轴线：{location.profile.cameraRules.axisDirection}</p>
+                <p>允许：{location.profile.cameraRules.allowedAngles?.join("、")}</p>
+                <p>禁止：{location.profile.cameraRules.forbiddenAngles?.join("、")}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        <EditableField
+          label="scenePrompt（场景视觉描述）"
+          value={location.scenePrompt}
+          multiline
+          onSave={(val) => onUpdate(location.id, { scenePrompt: val })}
+        />
+
+        <EditableField
+          label="negativePrompt（负面约束）"
+          value={location.negativePrompt}
+          multiline
+          onSave={(val) => onUpdate(location.id, { negativePrompt: val })}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 // ===== Storyboard Step =====
 
 function StoryboardStep({
-  project, onGenerate, onUpdateShot, highlightShotIndex, loading,
+  project, onGenerate, onUpdateShot, highlightShotIndex, onImagePreview, loading,
 }: {
   project: ProjectDetail;
   onGenerate: () => void;
   onUpdateShot: (id: number, patch: Record<string, any>) => void;
   highlightShotIndex: number | null;
+  onImagePreview: (url: string) => void;
   loading: boolean;
 }) {
   const shotRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -973,6 +1154,7 @@ function StoryboardStep({
             shot={shot}
             project={project}
             onUpdate={onUpdateShot}
+            onImagePreview={onImagePreview}
             ref={(el) => { if (el) shotRefs.current.set(shot.shotIndex, el); else shotRefs.current.delete(shot.shotIndex); }}
           />
         ))}
@@ -985,11 +1167,13 @@ const ShotCard = React.forwardRef<HTMLDivElement, {
   shot: ShotDTO;
   project: ProjectDetail;
   onUpdate: (id: number, patch: Record<string, any>) => void;
-}>(({ shot, project, onUpdate }, ref) => {
-  const locationName = project.locations.find((l) => l.id === shot.locationId)?.name || "未知场景";
-  const characterNames = shot.characterIds
-    .map((cid) => project.characters.find((c) => c.id === cid)?.name)
-    .filter(Boolean);
+  onImagePreview: (url: string) => void;
+}>(({ shot, project, onUpdate, onImagePreview }, ref) => {
+  const location = project.locations.find((l) => l.id === shot.locationId);
+  const locationName = location?.name || "未知场景";
+  const shotCharacters = shot.characterIds
+    .map((cid) => project.characters.find((c) => c.id === cid))
+    .filter(Boolean) as CharacterDTO[];
 
   const facingEntries = Object.entries(shot.continuity.characterFacing);
   const charMap = new Map(project.characters.map((c) => [String(c.id), c.name]));
@@ -1002,13 +1186,39 @@ const ShotCard = React.forwardRef<HTMLDivElement, {
             {shot.shotIndex}
           </div>
           <div className="flex-1 min-w-0 space-y-2">
-            {/* Header */}
+            {/* Header with linked refs */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium text-sm">镜头 {shot.shotIndex}</span>
-              <Badge variant="outline" className="text-[10px]">{locationName}</Badge>
-              {characterNames.map((n) => (
-                <Badge key={n} variant="secondary" className="text-[10px]">{n}</Badge>
+
+              {/* Location ref thumbnail */}
+              {location?.referenceImageUrl ? (
+                <div
+                  className="flex items-center gap-1 rounded-md border bg-muted/30 overflow-hidden cursor-zoom-in hover:ring-1 hover:ring-primary/50 transition-shadow"
+                  onClick={() => onImagePreview(location.referenceImageUrl!)}
+                >
+                  <img src={location.referenceImageUrl} alt={locationName} className="w-5 h-5 object-cover" />
+                  <span className="text-[10px] pr-1.5 text-muted-foreground">{locationName}</span>
+                </div>
+              ) : (
+                <Badge variant="outline" className="text-[10px]">📍 {locationName}</Badge>
+              )}
+
+              {/* Character ref avatars */}
+              {shotCharacters.map((char) => (
+                char.referenceImageUrl ? (
+                  <div
+                    key={char.id}
+                    className="flex items-center gap-1 rounded-full border bg-muted/30 overflow-hidden cursor-zoom-in hover:ring-1 hover:ring-primary/50 transition-shadow"
+                    onClick={() => onImagePreview(char.referenceImageUrl!)}
+                  >
+                    <img src={char.referenceImageUrl} alt={char.name} className="w-5 h-5 object-cover rounded-full" />
+                    <span className="text-[10px] pr-1.5 text-muted-foreground">{char.name}</span>
+                  </div>
+                ) : (
+                  <Badge key={char.id} variant="secondary" className="text-[10px]">{char.name}</Badge>
+                )
               ))}
+
               <Badge variant="outline" className="text-[10px]">{shot.duration}s</Badge>
             </div>
 
@@ -1132,12 +1342,13 @@ function ContinuityStep({
 // ===== Generate Step =====
 
 function GenerateStep({
-  project, onRebuildPrompts, onGenerateShot, onPreview, loading,
+  project, onRebuildPrompts, onGenerateShot, onPreview, onImagePreview, loading,
 }: {
   project: ProjectDetail;
   onRebuildPrompts: () => void;
   onGenerateShot: (shot: ShotDTO) => void;
   onPreview: (url: string) => void;
+  onImagePreview: (url: string) => void;
   loading: boolean;
 }) {
   const completedCount = project.shots.filter((s) => s.status === "completed").length;
@@ -1170,6 +1381,7 @@ function GenerateStep({
             project={project}
             onGenerate={onGenerateShot}
             onPreview={onPreview}
+            onImagePreview={onImagePreview}
           />
         ))}
       </div>
@@ -1186,14 +1398,19 @@ function GenerateStep({
 }
 
 function GenerateShotCard({
-  shot, project, onGenerate, onPreview,
+  shot, project, onGenerate, onPreview, onImagePreview,
 }: {
   shot: ShotDTO;
   project: ProjectDetail;
   onGenerate: (shot: ShotDTO) => void;
   onPreview: (url: string) => void;
+  onImagePreview: (url: string) => void;
 }) {
-  const locationName = project.locations.find((l) => l.id === shot.locationId)?.name || "未知场景";
+  const location = project.locations.find((l) => l.id === shot.locationId);
+  const locationName = location?.name || "未知场景";
+  const shotCharacters = shot.characterIds
+    .map((cid) => project.characters.find((c) => c.id === cid))
+    .filter(Boolean) as CharacterDTO[];
 
   return (
     <Card>
@@ -1207,7 +1424,36 @@ function GenerateShotCard({
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-medium text-sm">镜头 {shot.shotIndex}</span>
-                <Badge variant="outline" className="text-[10px]">{locationName}</Badge>
+
+                {/* Location ref thumbnail */}
+                {location?.referenceImageUrl ? (
+                  <div
+                    className="flex items-center gap-1 rounded-md border bg-muted/30 overflow-hidden cursor-zoom-in hover:ring-1 hover:ring-primary/50 transition-shadow"
+                    onClick={() => onImagePreview(location.referenceImageUrl!)}
+                  >
+                    <img src={location.referenceImageUrl} alt={locationName} className="w-5 h-5 object-cover" />
+                    <span className="text-[10px] pr-1.5 text-muted-foreground">{locationName}</span>
+                  </div>
+                ) : (
+                  <Badge variant="outline" className="text-[10px]">📍 {locationName}</Badge>
+                )}
+
+                {/* Character ref avatars */}
+                {shotCharacters.map((char) => (
+                  char.referenceImageUrl ? (
+                    <div
+                      key={char.id}
+                      className="flex items-center gap-1 rounded-full border bg-muted/30 overflow-hidden cursor-zoom-in hover:ring-1 hover:ring-primary/50 transition-shadow"
+                      onClick={() => onImagePreview(char.referenceImageUrl!)}
+                    >
+                      <img src={char.referenceImageUrl} alt={char.name} className="w-5 h-5 object-cover rounded-full" />
+                      <span className="text-[10px] pr-1.5 text-muted-foreground">{char.name}</span>
+                    </div>
+                  ) : (
+                    <Badge key={char.id} variant="secondary" className="text-[10px]">{char.name}</Badge>
+                  )
+                ))}
+
                 <Badge variant="outline" className="text-[10px]">{shot.duration}s</Badge>
               </div>
               {shot.status === "completed" ? (

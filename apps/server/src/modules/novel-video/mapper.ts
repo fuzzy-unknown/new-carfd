@@ -32,6 +32,7 @@ export interface LocationDTO {
   profile: SceneProfile | null;
   scenePrompt: string;
   negativePrompt: string | null;
+  referenceImageUrl: string | null;
   locked: boolean;
 }
 
@@ -124,6 +125,7 @@ export function mapLocation(row: StoryLocation): LocationDTO {
     profile,
     scenePrompt: row.scenePrompt,
     negativePrompt: row.negativePrompt,
+    referenceImageUrl: row.referenceImageUrl,
     locked: row.locked === 1,
   };
 }

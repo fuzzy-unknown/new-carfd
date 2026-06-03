@@ -70,6 +70,11 @@ export const novelVideoRoute = new Elysia({ prefix: "/novel-video" })
     return { data: location, timestamp: new Date().toISOString() };
   })
 
+  .post("/locations/:id/generate-reference", async ({ params: { id } }) => {
+    const location = await novelVideoService.generateLocationReference(Number(id));
+    return { data: location, timestamp: new Date().toISOString() };
+  })
+
   .patch("/shots/:id", async ({ params: { id }, body }) => {
     const patch = body as Record<string, any>;
     const shot = await novelVideoService.updateShot(Number(id), patch);
@@ -86,7 +91,12 @@ export const novelVideoRoute = new Elysia({ prefix: "/novel-video" })
     return { data: shot, timestamp: new Date().toISOString() };
   })
 
-  // ===== Character Reference Upload =====
+  // ===== Character Reference =====
+  .post("/characters/:id/generate-reference", async ({ params: { id } }) => {
+    const character = await novelVideoService.generateCharacterReference(Number(id));
+    return { data: character, timestamp: new Date().toISOString() };
+  })
+
   .post("/characters/:id/upload-reference", async ({ params: { id }, request }) => {
     const formData = await request.formData();
     const file = formData.get("file");

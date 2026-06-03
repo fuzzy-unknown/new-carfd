@@ -111,6 +111,7 @@ export const storyLocations = sqliteTable("story_locations", {
   profileJson: text("profile_json").notNull(),
   scenePrompt: text("scene_prompt").notNull(),
   negativePrompt: text("negative_prompt"),
+  referenceImageUrl: text("reference_image_url"),
   locked: integer("locked").notNull().default(0),
   createdAt: integer("created_at")
     .notNull()

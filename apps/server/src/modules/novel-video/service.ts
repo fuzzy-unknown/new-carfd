@@ -11,6 +11,7 @@ import {
 import { eq, desc, and } from "drizzle-orm";
 import { BailianClient } from "../../lib/bailian-client";
 import { parseJSON } from "../../lib/json";
+import { parseDashScopeError } from "../../utils/dashscope-errors";
 import { uploadToOSS, uploadGeneratedToOSS } from "../../lib/oss";
 import {
   buildAnalysisPrompt,
@@ -901,6 +902,244 @@ export class NovelVideoService {
       .limit(1);
 
     return mapShot(updated);
+  }
+
+  // ===== Generate Character Reference Image =====
+
+  async generateCharacterReference(characterId: number): Promise<CharacterDTO> {
+    const [character] = await db
+      .select()
+      .from(storyCharacters)
+      .where(eq(storyCharacters.id, characterId))
+      .limit(1);
+
+    if (!character) throw new Error("角色不存在");
+    if (!character.identityPrompt) throw new Error("角色缺少 identityPrompt，请先生成角色库");
+
+    const prompt = character.identityPrompt;
+    const negativePrompt = character.negativePrompt || "";
+
+    console.log(`[generateCharacterReference] Generating for character "${character.name}" (id=${characterId})`);
+
+    // Call DashScope image generation API
+    const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || "";
+    const response = await fetch(
+      "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${DASHSCOPE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "qwen-image-2.0-pro",
+          input: {
+            messages: [
+              {
+                role: "user",
+                content: [{ text: prompt }],
+              },
+            ],
+          },
+          parameters: {
+            size: "1024*1024",
+            n: 1,
+            negative_prompt: negativePrompt,
+            watermark: false,
+            prompt_extend: true,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      let errorBody: any;
+      try { errorBody = await response.json(); } catch { /* skip */ }
+      throw new Error(`图片生成失败: ${parseDashScopeError(errorBody || {})}`);
+    }
+
+    const result = await response.json();
+
+    if (result.code || result.error) {
+      throw new Error(`图片生成失败: ${parseDashScopeError(result)}`);
+    }
+
+    const images = result.output?.choices?.[0]?.message?.content || [];
+    if (!images.length || !images[0].image) {
+      throw new Error("图片生成失败：模型未返回图片");
+    }
+
+    // Download and save the image
+    const remoteUrl = images[0].image;
+    const taskId = `ref-char-${characterId}-${Date.now()}`;
+    const localUrl = await this.downloadAndSaveFile(remoteUrl, taskId, "ref");
+
+    // Upload to OSS (also keeps local copy)
+    let finalUrl = localUrl;
+    try {
+      const relativePath = localUrl.replace("/api/uploads/", "");
+      const fullPath = path.join(UPLOADS_DIR, relativePath);
+      const file = Bun.file(fullPath);
+      if (await file.exists()) {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const ext = path.extname(relativePath).slice(1) || "png";
+        const mimeMap: Record<string, string> = {
+          png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp",
+        };
+        const contentType = mimeMap[ext] || "image/png";
+        const ossUrl = await uploadToOSS(buffer, `char/${characterId}-ref-${Date.now()}.${ext}`, contentType);
+        if (ossUrl) finalUrl = ossUrl;
+      }
+    } catch (err) {
+      console.warn("[generateCharacterReference] OSS upload failed, using local URL:", err);
+    }
+
+    // Update character
+    await db
+      .update(storyCharacters)
+      .set({ referenceImageUrl: finalUrl, updatedAt: Date.now() })
+      .where(eq(storyCharacters.id, characterId));
+
+    const [updated] = await db
+      .select()
+      .from(storyCharacters)
+      .where(eq(storyCharacters.id, characterId))
+      .limit(1);
+
+    return mapCharacter(updated);
+  }
+
+  // ===== Generate Location Reference Image =====
+
+  async generateLocationReference(locationId: number): Promise<LocationDTO> {
+    const [location] = await db
+      .select()
+      .from(storyLocations)
+      .where(eq(storyLocations.id, locationId))
+      .limit(1);
+
+    if (!location) throw new Error("场景不存在");
+    if (!location.scenePrompt) throw new Error("场景缺少 scenePrompt，请先生成场景库");
+
+    const prompt = location.scenePrompt;
+    const negativePrompt = location.negativePrompt || "";
+
+    console.log(`[generateLocationReference] Generating for location "${location.name}" (id=${locationId})`);
+
+    // Call DashScope image generation API
+    const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || "";
+    const response = await fetch(
+      "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${DASHSCOPE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "qwen-image-2.0-pro",
+          input: {
+            messages: [
+              {
+                role: "user",
+                content: [{ text: prompt }],
+              },
+            ],
+          },
+          parameters: {
+            size: "1024*1024",
+            n: 1,
+            negative_prompt: negativePrompt,
+            watermark: false,
+            prompt_extend: true,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      let errorBody: any;
+      try { errorBody = await response.json(); } catch { /* skip */ }
+      throw new Error(`场景图片生成失败: ${parseDashScopeError(errorBody || {})}`);
+    }
+
+    const result = await response.json();
+
+    if (result.code || result.error) {
+      throw new Error(`场景图片生成失败: ${parseDashScopeError(result)}`);
+    }
+
+    const images = result.output?.choices?.[0]?.message?.content || [];
+    if (!images.length || !images[0].image) {
+      throw new Error("场景图片生成失败：模型未返回图片");
+    }
+
+    // Download and save the image
+    const remoteUrl = images[0].image;
+    const taskId = `ref-loc-${locationId}-${Date.now()}`;
+    const localUrl = await this.downloadAndSaveFile(remoteUrl, taskId, "ref");
+
+    // Upload to OSS
+    let finalUrl = localUrl;
+    try {
+      const relativePath = localUrl.replace("/api/uploads/", "");
+      const fullPath = path.join(UPLOADS_DIR, relativePath);
+      const file = Bun.file(fullPath);
+      if (await file.exists()) {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const ext = path.extname(relativePath).slice(1) || "png";
+        const mimeMap: Record<string, string> = {
+          png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp",
+        };
+        const contentType = mimeMap[ext] || "image/png";
+        const ossUrl = await uploadToOSS(buffer, `loc/${locationId}-ref-${Date.now()}.${ext}`, contentType);
+        if (ossUrl) finalUrl = ossUrl;
+      }
+    } catch (err) {
+      console.warn("[generateLocationReference] OSS upload failed, using local URL:", err);
+    }
+
+    // Update location
+    await db
+      .update(storyLocations)
+      .set({ referenceImageUrl: finalUrl, updatedAt: Date.now() })
+      .where(eq(storyLocations.id, locationId));
+
+    const [updated] = await db
+      .select()
+      .from(storyLocations)
+      .where(eq(storyLocations.id, locationId))
+      .limit(1);
+
+    return mapLocation(updated);
+  }
+
+  /**
+   * Download a remote file and save it locally under uploads.
+   */
+  private async downloadAndSaveFile(
+    remoteUrl: string,
+    taskId: string,
+    prefix: string
+  ): Promise<string> {
+    const res = await fetch(remoteUrl);
+    if (!res.ok) throw new Error(`下载失败: HTTP ${res.status}`);
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+
+    // Determine extension from content-type or URL
+    const contentType = res.headers.get("content-type") || "";
+    let ext = "png";
+    if (contentType.includes("jpeg") || contentType.includes("jpg")) ext = "jpg";
+    else if (contentType.includes("webp")) ext = "webp";
+    else if (contentType.includes("png")) ext = "png";
+
+    const dir = path.join(UPLOADS_DIR, taskId);
+    await mkdir(dir, { recursive: true });
+    const filePath = path.join(dir, `${prefix}.${ext}`);
+    await writeFile(filePath, buffer);
+
+    return `/api/uploads/${taskId}/${prefix}.${ext}`;
   }
 
   // ===== Upload Character Reference =====

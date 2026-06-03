@@ -151,6 +151,16 @@ export const api = {
         body: formData,
       }).then(handleResponse);
     },
+
+    generateCharacterReference: (id: number) =>
+      fetch(`${API_BASE}/novel-video/characters/${id}/generate-reference`, {
+        method: "POST",
+      }).then(handleResponse),
+
+    generateLocationReference: (id: number) =>
+      fetch(`${API_BASE}/novel-video/locations/${id}/generate-reference`, {
+        method: "POST",
+      }).then(handleResponse),
   },
 
   assets: {

@@ -1,0 +1,19 @@
+{
+  "name": "angry-mushroom",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run scripts/dev.ts",
+    "dev:client": "bun run scripts/dev-client.ts",
+    "dev:server": "bun run scripts/dev-server.ts",
+    "build": "bun run --cwd apps/client build"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "tailwindcss": "^4.3.0"
+  }
+}

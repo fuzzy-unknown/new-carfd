@@ -1,0 +1,13 @@
+node_modules
+dist
+build
+.DS_Store
+*.tsbuildinfo
+
+# Runtime data
+data
+storage
+logs
+
+# Local environment
+.env

@@ -5,13 +5,16 @@ import { healthRoute } from "./modules/health";
 import { userRoute } from "./modules/user";
 import { initializeDatabase } from "./db";
 
-const PORT = 5001;
+const PORT = Number(process.env.PORT) || 5001;
 
 async function start() {
   await initializeDatabase();
 
   const app = new Elysia({ prefix: "/api" })
-    .use(cors())
+    .use(cors({
+      origin: ["http://localhost:5000", process.env.FRONTEND_URL].filter(Boolean) as string[],
+      credentials: true,
+    }))
     .use(
       openapi({
         documentation: {

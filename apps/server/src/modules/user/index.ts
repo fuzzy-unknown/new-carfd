@@ -16,10 +16,10 @@ export const userRoute = new Elysia({ prefix: "/users" })
   )
   .get(
     "/:id",
-    ({ params: { id } }) => {
+    ({ params: { id }, error }) => {
       const user = userService.findById(Number(id));
       if (!user) {
-        throw new Error("用户不存在");
+        return error(404, { message: "用户不存在" });
       }
       return user;
     },
@@ -29,7 +29,7 @@ export const userRoute = new Elysia({ prefix: "/users" })
       }),
       response: {
         200: UserModel,
-        404: t.Literal("用户不存在"),
+        404: t.Object({ message: t.String() }),
       },
       detail: {
         summary: "根据ID获取用户",

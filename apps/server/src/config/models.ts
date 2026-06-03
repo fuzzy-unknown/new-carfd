@@ -12,6 +12,7 @@ export interface ModelParameter {
 export interface ModelPricing {
   inputPrice: number; // 每百万 Token 价格（元）
   outputPrice?: number; // 每百万 Token 价格（元）
+  inputPrice1080?: number; // 视频每秒价格（元） - 1080P
   unit?: 'token' | 'image' | 'video';
   note?: string;
 }
@@ -116,9 +117,9 @@ export const MODELS: Record<string, ModelConfig> = {
     endpoint: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
     async: false,
     pricing: {
-      inputPrice: 0,
+      inputPrice: 0.25,
       unit: 'image',
-      note: '按生成次数计费',
+      note: '0.25元/张',
     },
     parameters: [
       { name: 'prompt', type: 'text', required: true, description: '正向提示词' },
@@ -144,9 +145,9 @@ export const MODELS: Record<string, ModelConfig> = {
     endpoint: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
     async: false,
     pricing: {
-      inputPrice: 0,
+      inputPrice: 0.25,
       unit: 'image',
-      note: '按生成次数计费',
+      note: '0.25元/张',
     },
     parameters: [
       { name: 'prompt', type: 'text', required: true, description: '正向提示词' },
@@ -173,15 +174,16 @@ export const MODELS: Record<string, ModelConfig> = {
     endpoint: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis',
     async: true,
     pricing: {
-      inputPrice: 2,
+      inputPrice: 0.9,
+      inputPrice1080: 1.6,
       unit: 'video',
-      note: '按秒计费，约 2元/秒',
+      note: '720P: 0.9元/秒, 1080P: 1.6元/秒',
     },
     parameters: [
       { name: 'prompt', type: 'text', required: true, description: '文本提示词' },
       { name: 'resolution', type: 'select', defaultValue: '720P', description: '视频分辨率', options: [
-        { label: '720P', value: '720P' },
-        { label: '1080P', value: '1080P' },
+        { label: '720P (0.9元/秒)', value: '720P' },
+        { label: '1080P (1.6元/秒)', value: '1080P' },
       ]},
       { name: 'ratio', type: 'select', defaultValue: '16:9', description: '宽高比', options: [
         { label: '16:9', value: '16:9' },
@@ -203,15 +205,16 @@ export const MODELS: Record<string, ModelConfig> = {
     endpoint: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis',
     async: true,
     pricing: {
-      inputPrice: 1.5,
+      inputPrice: 0.6,
+      inputPrice1080: 1,
       unit: 'video',
-      note: '按秒计费，约 1.5元/秒',
+      note: '720P: 0.6元/秒, 1080P: 1元/秒',
     },
     parameters: [
       { name: 'prompt', type: 'text', required: true, description: '文本提示词' },
       { name: 'resolution', type: 'select', defaultValue: '720P', description: '视频分辨率', options: [
-        { label: '720P', value: '720P' },
-        { label: '1080P', value: '1080P' },
+        { label: '720P (0.6元/秒)', value: '720P' },
+        { label: '1080P (1元/秒)', value: '1080P' },
       ]},
       { name: 'ratio', type: 'select', defaultValue: '16:9', description: '宽高比', options: [
         { label: '16:9', value: '16:9' },

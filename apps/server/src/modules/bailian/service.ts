@@ -66,7 +66,8 @@ export class BailianService {
     model: string,
     usage?: any,
     imageSize?: string,
-    videoDuration?: number
+    videoDuration?: number,
+    videoResolution?: string
   ): { inputTokens?: number; outputTokens?: number; totalPrice: number } {
     const modelConfig = MODELS[model];
     if (!modelConfig) {
@@ -86,11 +87,13 @@ export class BailianService {
 
       case 'image':
         const n = usage?.image_count || 1;
-        return { totalPrice: n * 0.05 }; // 假设每张图片 0.05 元
+        return { totalPrice: n * pricing.inputPrice };
 
       case 'video':
         const duration = videoDuration || 5;
-        return { totalPrice: duration * pricing.inputPrice };
+        const is1080P = videoResolution === '1080P';
+        const pricePerSecond = is1080P ? (pricing as any).inputPrice1080 || pricing.inputPrice : pricing.inputPrice;
+        return { totalPrice: duration * pricePerSecond };
 
       default:
         return { totalPrice: 0 };
@@ -228,7 +231,7 @@ export class BailianService {
       const images = result.output.choices[0]?.message?.content || [];
       const usage = result.usage;
 
-      const cost = this.calculateCost(model, usage, parameters.size);
+      const cost = this.calculateCost(model, usage);
 
       await this.updateRecord(taskId, {
         status: 'succeeded',

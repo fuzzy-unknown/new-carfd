@@ -18,7 +18,9 @@ interface Model {
   pricing: {
     inputPrice: number;
     outputPrice?: number;
+    inputPrice1080?: number;
     unit: string;
+    note?: string;
   };
   parameters: Array<{
     name: string;
@@ -218,11 +220,20 @@ export function Workspace() {
                   value={selectedModel.id}
                   onChange={(e) => handleModelChange((e.target as HTMLSelectElement).value)}
                 >
-                  {filteredModels.map(model => (
-                    <option key={model.id} value={model.id}>
-                      {model.name} - {formatPrice(model.pricing.inputPrice)}/{model.pricing.unit === 'token' ? '万Token' : '次'}
-                    </option>
-                  ))}
+                  {filteredModels.map(model => {
+                    const priceLabel = model.category === 'text'
+                      ? `${formatPrice(model.pricing.inputPrice)}/万Token`
+                      : model.category === 'image'
+                      ? `${formatPrice(model.pricing.inputPrice)}/张`
+                      : model.category === 'video'
+                      ? `¥${model.pricing.inputPrice}/秒`
+                      : `${formatPrice(model.pricing.inputPrice)}/${model.pricing.unit}`;
+                    return (
+                      <option key={model.id} value={model.id}>
+                        {model.name} - {priceLabel}
+                      </option>
+                    );
+                  })}
                 </Select>
                 <p className="text-sm text-muted-foreground">{selectedModel.description}</p>
               </CardContent>
@@ -234,20 +245,54 @@ export function Workspace() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between py-2 border-b">
-                    <span className="text-muted-foreground">输入价格</span>
-                    <span className="font-semibold">{formatPrice(selectedModel.pricing.inputPrice)}/万Token</span>
-                  </div>
-                  {selectedModel.pricing.outputPrice && (
-                    <div className="flex items-center justify-between py-2 border-b">
-                      <span className="text-muted-foreground">输出价格</span>
-                      <span className="font-semibold">{formatPrice(selectedModel.pricing.outputPrice)}/万Token</span>
-                    </div>
+                  {selectedModel.category === 'video' ? (
+                    <>
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-muted-foreground">720P 价格</span>
+                        <span className="font-semibold">{formatPrice(selectedModel.pricing.inputPrice)}/秒</span>
+                      </div>
+                      {selectedModel.pricing.inputPrice1080 && (
+                        <div className="flex items-center justify-between py-2 border-b">
+                          <span className="text-muted-foreground">1080P 价格</span>
+                          <span className="font-semibold">{formatPrice(selectedModel.pricing.inputPrice1080)}/秒</span>
+                        </div>
+                      )}
+                      {selectedModel.pricing.note && (
+                        <div className="py-2 text-sm text-muted-foreground text-center">
+                          {selectedModel.pricing.note}
+                        </div>
+                      )}
+                    </>
+                  ) : selectedModel.category === 'image' ? (
+                    <>
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-muted-foreground">单张价格</span>
+                        <span className="font-semibold">{formatPrice(selectedModel.pricing.inputPrice)}/张</span>
+                      </div>
+                      {selectedModel.pricing.note && (
+                        <div className="py-2 text-sm text-muted-foreground text-center">
+                          {selectedModel.pricing.note}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-muted-foreground">输入价格</span>
+                        <span className="font-semibold">{formatPrice(selectedModel.pricing.inputPrice)}/万Token</span>
+                      </div>
+                      {selectedModel.pricing.outputPrice && (
+                        <div className="flex items-center justify-between py-2 border-b">
+                          <span className="text-muted-foreground">输出价格</span>
+                          <span className="font-semibold">{formatPrice(selectedModel.pricing.outputPrice)}/万Token</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between py-2">
+                        <span className="text-muted-foreground">计费单位</span>
+                        <span className="font-semibold">{selectedModel.pricing.unit}</span>
+                      </div>
+                    </>
                   )}
-                  <div className="flex items-center justify-between py-2">
-                    <span className="text-muted-foreground">计费单位</span>
-                    <span className="font-semibold">{selectedModel.pricing.unit}</span>
-                  </div>
                 </div>
               </CardContent>
             </Card>

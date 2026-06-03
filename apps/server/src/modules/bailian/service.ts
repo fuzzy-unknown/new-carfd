@@ -1,8 +1,8 @@
 import { db } from "../../db";
-import { generationRecords } from "../../db/schema";
+import { generationRecords, storyProjects, storyScenes, storyCharacters } from "../../db/schema";
 import { MODELS, type ModelConfig } from "../../config/models";
 import { UPLOADS_DIR } from "../../config/paths";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, or, desc } from "drizzle-orm";
 import path from "path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { parseDashScopeError } from "../../utils/dashscope-errors";
@@ -128,6 +128,37 @@ export class BailianService {
       type,
       url: `/api/uploads/refs/${fileName}`,
       name: file.name,
+    };
+  }
+
+  async uploadCharacterReference(characterId: number, file: File): Promise<{ id: number; name: string; referenceImageUrl: string | null }> {
+    const [character] = await db.select().from(storyCharacters).where(eq(storyCharacters.id, characterId)).limit(1);
+    if (!character) throw new Error('角色不存在');
+
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const imageExts = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'];
+    if (!imageExts.includes(ext)) {
+      throw new Error('仅支持图片文件（PNG/JPG/WEBP/BMP/GIF）');
+    }
+
+    const charDir = path.join(UPLOADS_DIR, 'refs', 'char');
+    await mkdir(charDir, { recursive: true });
+
+    const fileName = `char-${characterId}-${Date.now()}.${ext}`;
+    const fullPath = path.join(charDir, fileName);
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await writeFile(fullPath, buffer);
+
+    const url = `/api/uploads/refs/char/${fileName}`;
+
+    await db.update(storyCharacters)
+      .set({ referenceImageUrl: url, updatedAt: Date.now() })
+      .where(eq(storyCharacters.id, characterId));
+
+    return {
+      id: character.id,
+      name: character.name,
+      referenceImageUrl: url,
     };
   }
 
@@ -722,6 +753,403 @@ export class BailianService {
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     };
+  }
+
+  async analyzeStory(story: string): Promise<{
+    id: number;
+    status: string;
+    scenes: { id: number; sceneNumber: number; title: string; description: string; videoPrompt: string; characterNames: string[]; status: string; videoUrl: string | null; errorMessage: string | null }[];
+    characters: { id: number; name: string; description: string; appearance: string | null; referenceImageUrl: string | null }[];
+  }> {
+    const systemPrompt = `你是一个专业的视频剧本分析助手。用户会给你一段小说或故事，请分析并将其分解为适合生成视频的多个场景，同时提取故事中的主要角色。
+
+对于每个场景，请提供：
+1. title: 简洁的场景标题（中文）
+2. description: 场景描述，描述该场景中发生的视觉内容和情节（中文），必须使用角色名（如"林峰"）而非泛指（如"男主角"），如果该场景有对话请写出主要台词对白
+3. videoPrompt: 一段适合文生视频模型的英文提示词（Prompt），详细描述该场景的视觉内容、镜头运动、光影氛围等，使用角色名描述动作。如果有对话台词，必须在 prompt 中用引号写出说话的台词内容，例如：Lin Feng walks up to Xiao Yu and says "We need to leave now, it's not safe here." 注意台词需要和 description 中的中文对白对应
+4. characterNames: 该场景中出现的角色名列表（字符串数组），从下方角色列表中选择对应角色的 name 值，该场景中出现哪些角色就填哪些，无角色则为空数组。此字段非常重要！
+
+对于每个角色，请提供：
+1. name: 角色名（中文）
+2. description: 角色简介（中文）
+3. appearance: 角色的外貌描述（中文），包括发型、服装、体型等特征，用于后续生成参考图
+
+要求：
+- 每个场景都应是一个独立的视频片段，有明确的视觉焦点
+- videoPrompt 必须是英文，面向文生视频模型使用
+- 角色一致性：每个角色出现时附带外貌特征描述（服装、发型等），确保模型不混淆角色。例如用 "Lin Feng, wearing a black trench coat, walks in" 而非 "Lin Feng walks in"
+- 对话清晰：台词用双引号括起来，格式：CharacterName says "dialogue text here"
+- 不要背景音乐：不要 BGM，不要 background music，不要 instrumental music，只有人声和动作音效
+- 动作音效：动作场面必须描述音效，如：the sound of a fist hitting, glass breaking, footsteps echoing
+- 节奏合理：动作场景用短句加快节奏，对话场景平稳描述
+- 镜头语言：明确写出镜头运动，如 slow tracking shot, close-up, wide shot
+- 输出严格按 JSON 格式，不要包含任何额外文字或 markdown 标记
+
+输出格式（注意 description 和 videoPrompt 中都要包含台词对白）：
+{
+  "scenes": [
+    {
+      "title": "场景标题",
+      "description": "场景描述，包括角色台词",
+      "videoPrompt": "English video prompt for this scene with character dialogue in quotes like 'Hello'",
+      "characterNames": ["角色名1", "角色名2"]
+    }
+  ],
+  "characters": [
+    {
+      "name": "角色名",
+      "description": "角色简介",
+      "appearance": "角色的外貌描述"
+    }
+  ]
+}`;
+
+    const result = await this.callDashScopeApi(
+      'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
+      {
+        model: 'qwen3.7-plus',
+        input: {
+          messages: [
+            { role: 'system', content: [{ text: systemPrompt }] },
+            { role: 'user', content: [{ text: story }] },
+          ],
+        },
+        parameters: {
+          max_tokens: 4000,
+          temperature: 0.7,
+          result_format: 'message',
+        },
+      }
+    );
+
+    let rawContent = '';
+    if (result.output && result.output.choices) {
+      const content = result.output.choices[0]?.message?.content;
+      if (Array.isArray(content)) {
+        rawContent = content.map((c: any) => c.text || '').join('');
+      } else {
+        rawContent = content || '';
+      }
+    }
+
+    // Parse JSON from LLM response (strip markdown code blocks if present)
+    const jsonMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/) || rawContent.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawContent;
+    let scenes: { title: string; description: string; videoPrompt: string; characterNames?: string[] }[] = [];
+    let characters: { name: string; description: string; appearance?: string }[] = [];
+    try {
+      const parsed = JSON.parse(jsonStr);
+      scenes = parsed.scenes || [];
+      characters = parsed.characters || [];
+    } catch {
+      throw new Error('AI 分析失败：无法解析返回结果，请重试');
+    }
+
+    // Auto-match characters to scenes if LLM didn't include characterNames
+    const allCharNames = characters.map(c => c.name);
+    for (const s of scenes) {
+      if (!s.characterNames || s.characterNames.length === 0) {
+        const matched = allCharNames.filter(name =>
+          (s.title && s.title.includes(name)) ||
+          (s.description && s.description.includes(name)) ||
+          (s.videoPrompt && s.videoPrompt.includes(name))
+        );
+        s.characterNames = matched;
+      }
+    }
+
+    if (scenes.length === 0) {
+      throw new Error('AI 未检测到有效场景，请调整输入内容后重试');
+    }
+
+    // Create project record
+    const [project] = await db.insert(storyProjects).values({
+      storyText: story,
+      status: 'ready',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }).returning();
+
+    // Create scene records
+    const sceneRows = [];
+    for (let i = 0; i < scenes.length; i++) {
+      const s = scenes[i];
+      const [scene] = await db.insert(storyScenes).values({
+        projectId: project.id,
+        sceneNumber: i + 1,
+        title: s.title || `场景 ${i + 1}`,
+        description: s.description || '',
+        videoPrompt: s.videoPrompt || s.description || '',
+        characterNames: s.characterNames ? JSON.stringify(s.characterNames) : null,
+        status: 'pending',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }).returning();
+      sceneRows.push(scene);
+    }
+
+    // Create character records
+    const characterRows = [];
+    for (const c of characters) {
+      if (!c.name) continue;
+      const [character] = await db.insert(storyCharacters).values({
+        projectId: project.id,
+        name: c.name,
+        description: c.description || '',
+        appearance: c.appearance || null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }).returning();
+      characterRows.push(character);
+    }
+
+    return {
+      id: project.id,
+      status: project.status,
+      scenes: sceneRows.map(s => ({
+        id: s.id,
+        sceneNumber: s.sceneNumber,
+        title: s.title,
+        description: s.description,
+        videoPrompt: s.videoPrompt,
+        characterNames: s.characterNames ? JSON.parse(s.characterNames) : [],
+        status: s.status,
+        videoUrl: s.videoUrl,
+        errorMessage: s.errorMessage,
+      })),
+      characters: characterRows.map(c => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        appearance: c.appearance,
+        referenceImageUrl: c.referenceImageUrl,
+      })),
+    };
+  }
+
+  async generateSceneVideo(
+    sceneId: number,
+    params?: { model?: string; resolution?: string; duration?: number }
+  ): Promise<{ videoTaskId: string; status: string }> {
+    const [scene] = await db.select().from(storyScenes).where(eq(storyScenes.id, sceneId)).limit(1);
+    if (!scene) {
+      throw new Error('场景不存在');
+    }
+
+    const model = params?.model || 'happyhorse-1.0-t2v';
+    const resolution = params?.resolution || '720P';
+    const duration = params?.duration || 5;
+
+    // Look up character references for this scene
+    const characterNames: string[] = scene.characterNames ? JSON.parse(scene.characterNames) : [];
+
+    // Build request body with character reference images if available
+    let effectiveModel = model;
+    let prompt = scene.videoPrompt;
+    const input: { prompt: string; media?: { type: string; url: string }[] } = { prompt };
+
+    if (characterNames.length > 0) {
+      const chars = await db.select()
+        .from(storyCharacters)
+        .where(eq(storyCharacters.projectId, scene.projectId))
+        .all();
+
+      const refChars = chars.filter(c => characterNames.includes(c.name) && c.referenceImageUrl);
+
+      if (refChars.length > 0) {
+        const media: { type: string; url: string }[] = [];
+        let enhancedPrompt = '';
+        for (let i = 0; i < refChars.length; i++) {
+          const c = refChars[i];
+          try {
+            const dataUri = await this.getReferenceDataUri(c.referenceImageUrl!);
+            media.push({ type: 'reference_image', url: dataUri });
+            enhancedPrompt += `[Image ${i + 1}] is ${c.name}. `;
+          } catch { /* skip if reference file missing */ }
+        }
+        if (media.length > 0) {
+          prompt = enhancedPrompt + scene.videoPrompt;
+          effectiveModel = 'happyhorse-1.0-r2v';
+          input.prompt = prompt;
+          input.media = media;
+        }
+      }
+    }
+
+    // Use existing generate infrastructure to create a video task
+    const taskId = `${effectiveModel}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const storedParams = { prompt: scene.videoPrompt, resolution, duration, watermark: true };
+
+    // Call DashScope video API directly (same pattern as generateVideo)
+    const requestBody: any = {
+      model: effectiveModel,
+      input,
+      parameters: { resolution, duration, watermark: true },
+    };
+
+    try {
+      const response = await fetch(
+        'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${DASHSCOPE_API_KEY}`,
+            'Content-Type': 'application/json',
+            'X-DashScope-Async': 'enable',
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
+
+      if (!response.ok) {
+        let errorBody: any;
+        try { errorBody = await response.json(); } catch { /* skip */ }
+        const errMsg = parseDashScopeError(errorBody || {});
+        throw new Error(errMsg);
+      }
+
+      const result = await response.json();
+
+      if (result.code || result.error?.code) {
+        throw new Error(parseDashScopeError(result));
+      }
+
+      const dashscopeTaskId = result.output?.task_id;
+      if (!dashscopeTaskId) {
+        throw new Error('视频任务创建失败：百炼未返回任务 ID');
+      }
+
+      // Create generation record (so pollVideoTasks tracks it)
+      await db.insert(generationRecords).values({
+        taskId,
+        model: effectiveModel,
+        category: 'video',
+        status: 'pending',
+        inputParams: JSON.stringify({ ...storedParams, _dashscope_task_id: dashscopeTaskId }),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      // Update scene with task ID
+      await db.update(storyScenes)
+        .set({ videoTaskId: taskId, status: 'generating', updatedAt: Date.now() })
+        .where(eq(storyScenes.id, sceneId));
+
+      return { videoTaskId: taskId, status: 'generating' };
+    } catch (error: any) {
+      const errMsg = error.message || '视频生成失败';
+      await db.update(storyScenes)
+        .set({ status: 'failed', errorMessage: errMsg, updatedAt: Date.now() })
+        .where(eq(storyScenes.id, sceneId));
+      throw new Error(errMsg);
+    }
+  }
+
+  async getProjectWithScenes(projectId: number) {
+    const [project] = await db.select().from(storyProjects).where(eq(storyProjects.id, projectId)).limit(1);
+    if (!project) return null;
+
+    const scenes = await db.select().from(storyScenes)
+      .where(eq(storyScenes.projectId, projectId))
+      .orderBy(storyScenes.sceneNumber);
+
+    // Resolve video URLs from generationRecords for scenes that have a task ID
+    const resolvedScenes = await Promise.all(scenes.map(async (scene) => {
+      let videoUrl = scene.videoUrl;
+      let status = scene.status;
+      let errorMessage = scene.errorMessage;
+
+      if (scene.videoTaskId && (status === 'generating' || status === 'pending')) {
+        const [record] = await db.select().from(generationRecords)
+          .where(eq(generationRecords.taskId, scene.videoTaskId))
+          .limit(1);
+        if (record) {
+          const outputResult = record.outputResult ? JSON.parse(record.outputResult) : null;
+          if (record.status === 'succeeded' && outputResult?.results?.[0]?.video_url) {
+            videoUrl = outputResult.results[0].video_url;
+            status = 'completed';
+            errorMessage = null;
+            // Update scene with resolved URL
+            await db.update(storyScenes)
+              .set({ videoUrl, status: 'completed', errorMessage: null, updatedAt: Date.now() })
+              .where(eq(storyScenes.id, scene.id));
+          } else if (record.status === 'failed') {
+            status = 'failed';
+            errorMessage = record.errorMessage || '视频生成失败';
+            await db.update(storyScenes)
+              .set({ status: 'failed', errorMessage, updatedAt: Date.now() })
+              .where(eq(storyScenes.id, scene.id));
+          } else if (record.status === 'processing' || record.status === 'pending') {
+            status = 'generating';
+            await db.update(storyScenes)
+              .set({ status: 'generating', updatedAt: Date.now() })
+              .where(eq(storyScenes.id, scene.id));
+          }
+        }
+      }
+
+      return {
+        id: scene.id,
+        sceneNumber: scene.sceneNumber,
+        title: scene.title,
+        description: scene.description,
+        videoPrompt: scene.videoPrompt,
+        characterNames: scene.characterNames ? JSON.parse(scene.characterNames) : [],
+        status,
+        videoUrl,
+        errorMessage,
+      };
+    }));
+
+    // Fetch characters for this project
+    const chars = await db.select()
+      .from(storyCharacters)
+      .where(eq(storyCharacters.projectId, projectId))
+      .orderBy(storyCharacters.id);
+
+    // Update project status
+    const allCompleted = resolvedScenes.every(s => s.status === 'completed' || s.status === 'failed');
+    if (allCompleted) {
+      await db.update(storyProjects)
+        .set({ status: 'completed', updatedAt: Date.now() })
+        .where(eq(storyProjects.id, projectId));
+    }
+
+    return {
+      id: project.id,
+      storyText: project.storyText,
+      status: allCompleted ? 'completed' : project.status,
+      createdAt: project.createdAt,
+      scenes: resolvedScenes,
+      characters: chars.map(c => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        appearance: c.appearance,
+        referenceImageUrl: c.referenceImageUrl,
+      })),
+    };
+  }
+
+  async softDeleteProject(projectId: number): Promise<{ success: boolean }> {
+    const [project] = await db.select().from(storyProjects).where(eq(storyProjects.id, projectId)).limit(1);
+    if (!project) throw new Error('项目不存在');
+    await db.update(storyProjects)
+      .set({ isDeleted: 1, updatedAt: Date.now() })
+      .where(eq(storyProjects.id, projectId));
+    return { success: true };
+  }
+
+  async getAllProjects() {
+    const projects = await db.select().from(storyProjects)
+      .where(eq(storyProjects.isDeleted, 0))
+      .orderBy(desc(storyProjects.createdAt)).limit(20);
+    return projects.map(p => ({
+      id: p.id,
+      storyText: p.storyText.substring(0, 200) + (p.storyText.length > 200 ? '...' : ''),
+      status: p.status,
+      createdAt: p.createdAt,
+    }));
   }
 
   async getSupportedModels() {

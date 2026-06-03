@@ -1,0 +1,1 @@
+ALTER TABLE `story_scenes` ADD `character_names` text;

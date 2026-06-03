@@ -1,0 +1,1 @@
+ALTER TABLE `story_projects` ADD `is_deleted` integer DEFAULT 0 NOT NULL;

@@ -1,10 +1,10 @@
 import { NavLink } from "react-router";
-import { LayoutDashboard, BarChart3, Receipt } from "lucide-react";
+import { LayoutDashboard, Compass, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { to: "/", label: "工作台", icon: LayoutDashboard, end: true },
-  { to: "/overview", label: "总览", icon: BarChart3, end: false },
+  { to: "/explore", label: "探索", icon: Compass, end: false },
   { to: "/billing", label: "计费", icon: Receipt, end: false },
 ] as const;
 

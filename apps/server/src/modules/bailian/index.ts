@@ -67,6 +67,93 @@ export const bailianRoute = new Elysia({ prefix: "/bailian" })
       },
     }
   )
+  .post(
+    "/explore/analyze",
+    async ({ body }) => {
+      return await bailianService.analyzeStory(body.story);
+    },
+    {
+      body: t.Object({ story: t.String() }),
+      detail: {
+        summary: "分析故事，分解为场景",
+        tags: ["百炼"],
+      },
+    }
+  )
+  .post(
+    "/explore/scenes/:id/generate",
+    async ({ params, body }) => {
+      return await bailianService.generateSceneVideo(Number(params.id), body);
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      body: t.Optional(t.Object({
+        model: t.Optional(t.String()),
+        resolution: t.Optional(t.String()),
+        duration: t.Optional(t.Number()),
+      })),
+      detail: {
+        summary: "生成场景视频",
+        tags: ["百炼"],
+      },
+    }
+  )
+  .get(
+    "/explore/projects",
+    async () => {
+      return await bailianService.getAllProjects();
+    },
+    {
+      detail: {
+        summary: "获取所有故事项目列表",
+        tags: ["百炼"],
+      },
+    }
+  )
+  .get(
+    "/explore/projects/:id",
+    async ({ params }) => {
+      return await bailianService.getProjectWithScenes(Number(params.id));
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      detail: {
+        summary: "获取故事项目详情及场景",
+        tags: ["百炼"],
+      },
+    }
+  )
+  .post(
+    "/explore/characters/:id/upload",
+    async ({ params, request }) => {
+      const formData = await request.formData();
+      const file = formData.get("file");
+      if (!file || !(file instanceof File)) {
+        return { error: "请上传文件" };
+      }
+      return await bailianService.uploadCharacterReference(Number(params.id), file);
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      detail: {
+        summary: "上传角色参考图片",
+        tags: ["百炼"],
+      },
+    }
+  )
+  .post(
+    "/explore/projects/:id/delete",
+    async ({ params }) => {
+      return await bailianService.softDeleteProject(Number(params.id));
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      detail: {
+        summary: "软删除故事项目",
+        tags: ["百炼"],
+      },
+    }
+  )
   .get(
     "/records",
     async ({ query }) => {

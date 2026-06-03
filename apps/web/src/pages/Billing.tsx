@@ -64,10 +64,6 @@ export function Billing() {
     );
   }
 
-  // 计算最大值用于进度条
-  const maxModelCost = Math.max(...stats.modelStats.map(m => m.cost), 0.01);
-  const maxCategoryCost = Math.max(...stats.categoryStats.map(c => c.cost), 0.01);
-
   return (
     <div className="space-y-6">
       {/* 头部 */}
@@ -219,7 +215,7 @@ export function Billing() {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {stats.dailyTrend.map((day, index) => {
+            {stats.dailyTrend.map((day) => {
               const maxCost = Math.max(...stats.dailyTrend.map(d => d.cost), 0.01);
               const height = day.cost > 0 ? Math.max((day.cost / maxCost) * 100, 1) : 0;
               const date = new Date(day.date);

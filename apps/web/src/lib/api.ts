@@ -43,5 +43,31 @@ export const api = {
         body: formData,
       }).then(handleResponse);
     },
+    analyzeStory: (story: string) =>
+      fetch(`${API_BASE}/bailian/explore/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ story }),
+      }).then(handleResponse),
+    generateSceneVideo: (sceneId: number, params?: { model?: string; resolution?: string; duration?: number }) =>
+      fetch(`${API_BASE}/bailian/explore/scenes/${sceneId}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params || {}),
+      }).then(handleResponse),
+    getProject: (id: number) =>
+      fetch(`${API_BASE}/bailian/explore/projects/${id}`).then(handleResponse),
+    getProjects: () =>
+      fetch(`${API_BASE}/bailian/explore/projects`).then(handleResponse),
+    deleteProject: (id: number) =>
+      fetch(`${API_BASE}/bailian/explore/projects/${id}/delete`, { method: 'POST' }).then(handleResponse),
+    uploadCharacterReference: (characterId: number, file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return fetch(`${API_BASE}/bailian/explore/characters/${characterId}/upload`, {
+        method: 'POST',
+        body: formData,
+      }).then(handleResponse);
+    },
   },
 };

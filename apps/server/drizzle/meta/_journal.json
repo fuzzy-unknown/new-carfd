@@ -15,6 +15,34 @@
       "when": 1780473436370,
       "tag": "0001_married_darkstar",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1780483081066,
+      "tag": "0002_dizzy_namorita",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1780483597006,
+      "tag": "0003_chief_hannibal_king",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1780484450081,
+      "tag": "0004_wet_shaman",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1780485477618,
+      "tag": "0005_puzzling_loki",
+      "breakpoints": true
     }
   ]
 }

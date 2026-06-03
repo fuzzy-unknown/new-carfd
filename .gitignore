@@ -11,3 +11,5 @@ logs
 
 # Local environment
 .env
+
+apps/server/uploads

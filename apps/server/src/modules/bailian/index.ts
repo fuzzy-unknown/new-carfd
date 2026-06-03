@@ -87,4 +87,16 @@ export const bailianRoute = new Elysia({ prefix: "/bailian" })
         tags: ["百炼"],
       },
     }
+  )
+  .get(
+    "/statistics",
+    async () => {
+      return await bailianService.getStatistics();
+    },
+    {
+      detail: {
+        summary: "获取计费统计数据",
+        tags: ["百炼"],
+      },
+    }
   );

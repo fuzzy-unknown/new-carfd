@@ -34,5 +34,6 @@ export const api = {
       }).then(handleResponse),
     getRecords: () => fetch(`${API_BASE}/bailian/records`).then(handleResponse),
     getRecordById: (id: number) => fetch(`${API_BASE}/bailian/records/${id}`).then(handleResponse),
+    getStatistics: () => fetch(`${API_BASE}/bailian/statistics`).then(handleResponse),
   },
 };

@@ -350,6 +350,110 @@ export class BailianService {
       parameters: model.parameters,
     }));
   }
+
+  async getStatistics() {
+    const records = await db
+      .select()
+      .from(generationRecords)
+      .where(eq(generationRecords.status, 'succeeded'));
+
+    const now = Date.now();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const sevenDaysMs = 7 * oneDayMs;
+    const thirtyDaysMs = 30 * oneDayMs;
+
+    // 总消费
+    const totalCost = records.reduce((sum, r) => {
+      const cost = r.cost ? JSON.parse(r.cost) : null;
+      return sum + (cost?.totalPrice || 0);
+    }, 0);
+
+    // 今日消费
+    const todayCost = records.reduce((sum, r) => {
+      if (now - r.createdAt <= oneDayMs) {
+        const cost = r.cost ? JSON.parse(r.cost) : null;
+        return sum + (cost?.totalPrice || 0);
+      }
+      return sum;
+    }, 0);
+
+    // 本周消费
+    const weekCost = records.reduce((sum, r) => {
+      if (now - r.createdAt <= sevenDaysMs) {
+        const cost = r.cost ? JSON.parse(r.cost) : null;
+        return sum + (cost?.totalPrice || 0);
+      }
+      return sum;
+    }, 0);
+
+    // 本月消费
+    const monthCost = records.reduce((sum, r) => {
+      if (now - r.createdAt <= thirtyDaysMs) {
+        const cost = r.cost ? JSON.parse(r.cost) : null;
+        return sum + (cost?.totalPrice || 0);
+      }
+      return sum;
+    }, 0);
+
+    // 各模型消费统计
+    const modelStats = new Map<string, { count: number; cost: number }>();
+    records.forEach((r) => {
+      const cost = r.cost ? JSON.parse(r.cost) : null;
+      const current = modelStats.get(r.model) || { count: 0, cost: 0 };
+      modelStats.set(r.model, {
+        count: current.count + 1,
+        cost: current.cost + (cost?.totalPrice || 0),
+      });
+    });
+
+    // 各类别消费统计
+    const categoryStats = new Map<string, { count: number; cost: number }>();
+    records.forEach((r) => {
+      const cost = r.cost ? JSON.parse(r.cost) : null;
+      const current = categoryStats.get(r.category) || { count: 0, cost: 0 };
+      categoryStats.set(r.category, {
+        count: current.count + 1,
+        cost: current.cost + (cost?.totalPrice || 0),
+      });
+    });
+
+    // 每日消费趋势（最近30天）
+    const dailyTrend = new Map<string, number>();
+    for (let i = 0; i < 30; i++) {
+      const date = new Date(now - i * oneDayMs);
+      const dateStr = date.toISOString().split('T')[0];
+      dailyTrend.set(dateStr, 0);
+    }
+
+    records.forEach((r) => {
+      const cost = r.cost ? JSON.parse(r.cost) : null;
+      const date = new Date(r.createdAt);
+      const dateStr = date.toISOString().split('T')[0];
+      if (dailyTrend.has(dateStr)) {
+        dailyTrend.set(dateStr, dailyTrend.get(dateStr)! + (cost?.totalPrice || 0));
+      }
+    });
+
+    return {
+      totalCost,
+      todayCost,
+      weekCost,
+      monthCost,
+      totalRecords: records.length,
+      modelStats: Array.from(modelStats.entries()).map(([model, data]) => ({
+        model,
+        modelName: MODELS[model]?.name || model,
+        ...data,
+      })),
+      categoryStats: Array.from(categoryStats.entries()).map(([category, data]) => ({
+        category,
+        ...data,
+      })),
+      dailyTrend: Array.from(dailyTrend.entries())
+        .map(([date, cost]) => ({ date, cost }))
+        .reverse(),
+    };
+  }
 }
 
 export const bailianService = new BailianService();

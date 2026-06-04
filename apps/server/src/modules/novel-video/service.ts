@@ -10,9 +10,11 @@ import {
 } from "../../db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { BailianClient } from "../../lib/bailian-client";
+import { OpenAIClient } from "../../lib/openai-client";
 import { parseJSON } from "../../lib/json";
 import { parseDashScopeError } from "../../utils/dashscope-errors";
 import { uploadToOSS, uploadGeneratedToOSS } from "../../lib/oss";
+import { getImageProviderConfig } from "../../config/image-provider";
 import {
   buildAnalysisPrompt,
   buildCharacterPrompt,
@@ -46,6 +48,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "path";
 
 const client = new BailianClient();
+const openaiClient = new OpenAIClient();
 
 export class NovelVideoService {
   // ===== Project CRUD =====
@@ -1126,7 +1129,30 @@ export class NovelVideoService {
     taskIdPrefix: string,
     filePrefix: string
   ): Promise<string> {
+    const imageConfig = getImageProviderConfig();
+
+    console.log(`[callImageGeneration] Using provider: ${imageConfig.provider}, model: ${imageConfig.model}`);
+
+    if (imageConfig.provider === "openai") {
+      return await this.callOpenAIImageGeneration(prompt, taskIdPrefix, filePrefix);
+    } else {
+      return await this.callDashScopeImageGeneration(prompt, negativePrompt, taskIdPrefix, filePrefix);
+    }
+  }
+
+  /**
+   * Call DashScope (Qwen) image generation API
+   */
+  private async callDashScopeImageGeneration(
+    prompt: string,
+    negativePrompt: string,
+    taskIdPrefix: string,
+    filePrefix: string
+  ): Promise<string> {
     const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || "";
+    const imageConfig = getImageProviderConfig();
+    const model = imageConfig.model || "qwen-image-2.0-pro";
+
     const response = await fetch(
       "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
       {
@@ -1136,7 +1162,7 @@ export class NovelVideoService {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "qwen-image-2.0-pro",
+          model,
           input: {
             messages: [
               { role: "user", content: [{ text: prompt }] },
@@ -1175,6 +1201,30 @@ export class NovelVideoService {
   }
 
   /**
+   * Call OpenAI DALL-E image generation API
+   */
+  private async callOpenAIImageGeneration(
+    prompt: string,
+    taskIdPrefix: string,
+    filePrefix: string
+  ): Promise<string> {
+    const imageConfig = getImageProviderConfig();
+    const model = (imageConfig.model as "dall-e-2" | "dall-e-3") || "dall-e-2";
+
+    const result = await openaiClient.generateImage({
+      prompt,
+      model,
+      size: model === "dall-e-3" ? "1024x1024" : "1024x1024",
+      quality: "standard",
+      style: "vivid",
+      n: 1,
+    });
+
+    const taskId = `${taskIdPrefix}-${Date.now()}`;
+    return await this.downloadAndSaveFile(result.url, taskId, filePrefix);
+  }
+
+  /**
    * Upload a local file (from /api/uploads/ path) to OSS, return OSS URL or original.
    */
   private async uploadLocalToOSS(localUrl: string, keyPrefix: string): Promise<string> {
@@ -1210,75 +1260,18 @@ export class NovelVideoService {
 
     console.log(`[generateLocationReference] Generating for location "${location.name}" (id=${locationId})`);
 
-    // Call DashScope image generation API
-    const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || "";
-    const response = await fetch(
-      "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${DASHSCOPE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "qwen-image-2.0-pro",
-          input: {
-            messages: [
-              {
-                role: "user",
-                content: [{ text: prompt }],
-              },
-            ],
-          },
-          parameters: {
-            size: "1024*1024",
-            n: 1,
-            negative_prompt: negativePrompt,
-            watermark: false,
-            prompt_extend: true,
-          },
-        }),
-      }
+    // Use unified image generation method (supports both DashScope and OpenAI)
+    const localUrl = await this.callImageGeneration(
+      prompt,
+      negativePrompt,
+      `ref-loc-${locationId}`,
+      "ref"
     );
-
-    if (!response.ok) {
-      let errorBody: any;
-      try { errorBody = await response.json(); } catch { /* skip */ }
-      throw new Error(`场景图片生成失败: ${parseDashScopeError(errorBody || {})}`);
-    }
-
-    const result = await response.json();
-
-    if (result.code || result.error) {
-      throw new Error(`场景图片生成失败: ${parseDashScopeError(result)}`);
-    }
-
-    const images = result.output?.choices?.[0]?.message?.content || [];
-    if (!images.length || !images[0].image) {
-      throw new Error("场景图片生成失败：模型未返回图片");
-    }
-
-    // Download and save the image
-    const remoteUrl = images[0].image;
-    const taskId = `ref-loc-${locationId}-${Date.now()}`;
-    const localUrl = await this.downloadAndSaveFile(remoteUrl, taskId, "ref");
 
     // Upload to OSS
     let finalUrl = localUrl;
     try {
-      const relativePath = localUrl.replace("/api/uploads/", "");
-      const fullPath = path.join(UPLOADS_DIR, relativePath);
-      const file = Bun.file(fullPath);
-      if (await file.exists()) {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const ext = path.extname(relativePath).slice(1) || "png";
-        const mimeMap: Record<string, string> = {
-          png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp",
-        };
-        const contentType = mimeMap[ext] || "image/png";
-        const ossUrl = await uploadToOSS(buffer, `loc/${locationId}-ref-${Date.now()}.${ext}`, contentType);
-        if (ossUrl) finalUrl = ossUrl;
-      }
+      finalUrl = await this.uploadLocalToOSS(localUrl, `loc/${locationId}-ref-${Date.now()}`);
     } catch (err) {
       console.warn("[generateLocationReference] OSS upload failed, using local URL:", err);
     }

@@ -92,9 +92,8 @@ export const novelVideoRoute = new Elysia({ prefix: "/novel-video" })
   })
 
   // ===== Character Reference =====
-  .post("/characters/:id/generate-reference", async ({ params: { id }, body }) => {
-    const options = body as Record<string, any> || {};
-    const character = await novelVideoService.generateCharacterReference(Number(id), options.model);
+  .post("/characters/:id/generate-reference", async ({ params: { id } }) => {
+    const character = await novelVideoService.generateCharacterReference(Number(id));
     return { data: character, timestamp: new Date().toISOString() };
   })
 

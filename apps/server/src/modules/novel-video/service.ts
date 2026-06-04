@@ -10,11 +10,9 @@ import {
 } from "../../db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { BailianClient } from "../../lib/bailian-client";
-import { OpenAIClient } from "../../lib/openai-client";
 import { parseJSON } from "../../lib/json";
 import { parseDashScopeError } from "../../utils/dashscope-errors";
 import { uploadToOSS, uploadGeneratedToOSS } from "../../lib/oss";
-import { getImageProviderConfig } from "../../config/image-provider";
 import {
   buildAnalysisPrompt,
   buildCharacterPrompt,
@@ -48,7 +46,6 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "path";
 
 const client = new BailianClient();
-const openaiClient = new OpenAIClient();
 
 export class NovelVideoService {
   // ===== Project CRUD =====
@@ -1049,7 +1046,7 @@ export class NovelVideoService {
 
   // ===== Generate Character Reference Image =====
 
-  async generateCharacterReference(characterId: number, model?: string): Promise<CharacterDTO> {
+  async generateCharacterReference(characterId: number): Promise<CharacterDTO> {
     const [character] = await db
       .select()
       .from(storyCharacters)
@@ -1062,7 +1059,7 @@ export class NovelVideoService {
     const basePrompt = character.identityPrompt;
     const negativePrompt = (character.negativePrompt || "") + ", background, scenery, environment, landscape, indoor, outdoor, lighting effects";
 
-    console.log(`[generateCharacterReference] Generating for character "${character.name}" (id=${characterId}, model=${model})`);
+    console.log(`[generateCharacterReference] Generating for character "${character.name}" (id=${characterId})`);
 
     // 1. Generate portrait (white background, character only)
     const portraitPrompt = `Character portrait, ${basePrompt}. Plain white background, full body or upper body portrait, character standing still facing forward, no background scenery, no environment, studio lighting on white backdrop, character design sheet style.`;
@@ -1071,8 +1068,7 @@ export class NovelVideoService {
       portraitPrompt,
       negativePrompt,
       `ref-char-${characterId}`,
-      "portrait",
-      model
+      "portrait"
     );
 
     // Upload portrait to OSS
@@ -1090,8 +1086,7 @@ export class NovelVideoService {
         turnaroundPrompt,
         negativePrompt,
         `ref-char-${characterId}-turnaround`,
-        "turnaround",
-        model
+        "turnaround"
       );
 
       try { turnaroundFinal = await this.uploadLocalToOSS(turnaroundUrl, `char/${characterId}-turnaround-${Date.now()}`); } catch (err) {
@@ -1129,53 +1124,10 @@ export class NovelVideoService {
     prompt: string,
     negativePrompt: string,
     taskIdPrefix: string,
-    filePrefix: string,
-    userSelectedModel?: string
-  ): Promise<string> {
-    // If user selected a specific model, use it; otherwise use default config
-    let provider: ImageProvider;
-    let model: string;
-
-    if (userSelectedModel) {
-      // Determine provider from model name
-      if (userSelectedModel.startsWith("gpt-image") || userSelectedModel.startsWith("dall-e")) {
-        provider = "openai";
-        model = userSelectedModel;
-      } else if (userSelectedModel.startsWith("qwen")) {
-        provider = "dashscope";
-        model = userSelectedModel;
-      } else {
-        // Default to config
-        const imageConfig = getImageProviderConfig();
-        provider = imageConfig.provider;
-        model = imageConfig.model || userSelectedModel;
-      }
-    } else {
-      const imageConfig = getImageProviderConfig();
-      provider = imageConfig.provider;
-      model = imageConfig.model || "gpt-image-2";
-    }
-
-    console.log(`[callImageGeneration] Using provider: ${provider}, model: ${model}`);
-
-    if (provider === "openai") {
-      return await this.callOpenAIImageGeneration(prompt, taskIdPrefix, filePrefix, model as "dall-e-2" | "dall-e-3");
-    } else {
-      return await this.callDashScopeImageGeneration(prompt, negativePrompt, taskIdPrefix, filePrefix, model);
-    }
-  }
-
-  /**
-   * Call DashScope (Qwen) image generation API
-   */
-  private async callDashScopeImageGeneration(
-    prompt: string,
-    negativePrompt: string,
-    taskIdPrefix: string,
-    filePrefix: string,
-    model: string
+    filePrefix: string
   ): Promise<string> {
     const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || "";
+    const model = "qwen-image-2.0-pro";
 
     const response = await fetch(
       "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
@@ -1222,29 +1174,6 @@ export class NovelVideoService {
 
     const taskId = `${taskIdPrefix}-${Date.now()}`;
     return await this.downloadAndSaveFile(images[0].image, taskId, filePrefix);
-  }
-
-  /**
-   * Call OpenAI DALL-E image generation API
-   */
-  private async callOpenAIImageGeneration(
-    prompt: string,
-    taskIdPrefix: string,
-    filePrefix: string,
-    model: "gpt-image-2" | "dall-e-2" | "dall-e-3"
-  ): Promise<string> {
-    const result = await openaiClient.generateImage({
-      prompt,
-      model,
-      size: "1024x1024",
-      quality: "standard",
-      style: "vivid",
-      mode: "instant",
-      n: 1,
-    });
-
-    const taskId = `${taskIdPrefix}-${Date.now()}`;
-    return await this.downloadAndSaveFile(result.url, taskId, filePrefix);
   }
 
   /**

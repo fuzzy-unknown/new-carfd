@@ -6,7 +6,6 @@ import { Badge } from "../components/ui/badge";
 import { Textarea } from "../components/ui/textarea";
 import { Switch } from "../components/ui/switch";
 import { Label } from "../components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import {
   Sparkles, Loader2, BookOpen, Play, Clock, CheckCircle2,
   XCircle, Video, ChevronDown, Upload, RefreshCw,
@@ -312,8 +311,8 @@ export function Explore() {
     }
   };
 
-  const handleGenerateRef = async (characterId: number, model?: string) => {
-    const res: any = await api.novelVideo.generateCharacterReference(characterId, model);
+  const handleGenerateRef = async (characterId: number) => {
+    const res: any = await api.novelVideo.generateCharacterReference(characterId);
     if (res?.data) {
       setProject((prev) =>
         prev
@@ -835,12 +834,11 @@ function CharacterCard({
   onToggleLock: (id: number, locked: boolean) => void;
   onUpdate: (id: number, patch: Record<string, any>) => void;
   onUpload: (charId: number, file: File) => Promise<void>;
-  onGenerateRef: (charId: number, model?: string) => Promise<void>;
+  onGenerateRef: (charId: number) => Promise<void>;
   onImagePreview: (url: string) => void;
 }) {
   const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>("gpt-image-2");
   const [showPrompt, setShowPrompt] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -857,7 +855,7 @@ function CharacterCard({
 
   const handleGenerate = async () => {
     setGenerating(true);
-    try { await onGenerateRef(character.id, selectedModel); } finally { setGenerating(false); }
+    try { await onGenerateRef(character.id); } finally { setGenerating(false); }
   };
 
   return (
@@ -936,22 +934,6 @@ function CharacterCard({
           </div>
         ) : (
           <div className="space-y-2">
-            {/* Model selection */}
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">图片生成模型</Label>
-              <Select value={selectedModel} onValueChange={setSelectedModel}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="gpt-image-2">GPT Image 2 (OpenAI)</SelectItem>
-                  <SelectItem value="dall-e-3">DALL-E 3 (OpenAI)</SelectItem>
-                  <SelectItem value="dall-e-2">DALL-E 2 (OpenAI)</SelectItem>
-                  <SelectItem value="qwen-image-2.0-pro">千问图像 2.0 Pro (阿里)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
             {/* Three-view prompt display */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">

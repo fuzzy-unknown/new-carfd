@@ -75,7 +75,7 @@ export const api = {
     listProjects: () =>
       fetch(`${API_BASE}/novel-video/projects`).then(handleResponse),
 
-    createProject: (data: { title?: string; storyText: string }) =>
+    createProject: (data: { title?: string; storyText: string; autoGenerate?: boolean }) =>
       fetch(`${API_BASE}/novel-video/projects`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

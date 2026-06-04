@@ -50,7 +50,7 @@ const client = new BailianClient();
 export class NovelVideoService {
   // ===== Project CRUD =====
 
-  async createProject(input: { title?: string; storyText: string }): Promise<ProjectDetail> {
+  async createProject(input: { title?: string; storyText: string; autoGenerate?: boolean }): Promise<ProjectDetail> {
     const [project] = await db
       .insert(storyProjects)
       .values({
@@ -62,7 +62,19 @@ export class NovelVideoService {
       })
       .returning();
 
-    return this.getProject(project.id) as Promise<ProjectDetail>;
+    const projectDetail = await this.getProject(project.id) as Promise<ProjectDetail>;
+
+    // If autoGenerate is enabled, start the automatic pipeline
+    if (input.autoGenerate) {
+      // Run in background without blocking the response
+      setImmediate(() => {
+        this.autoGenerateProject(project.id).catch((err) => {
+          console.error(`[autoGenerate] Failed for project ${project.id}:`, err);
+        });
+      });
+    }
+
+    return projectDetail;
   }
 
   async getProject(projectId: number): Promise<ProjectDetail | null> {
@@ -915,6 +927,121 @@ export class NovelVideoService {
       .limit(1);
 
     return mapShot(updated);
+  }
+
+  // ===== Auto Generate Project (Full Pipeline) =====
+
+  /**
+   * Automatically run through the entire pipeline:
+   * 1. Analyze project
+   * 2. Generate characters
+   * 3. Generate locations
+   * 4. Generate storyboard
+   * 5. Check continuity
+   * 6. Rebuild prompts
+   * 7. Generate shot videos
+   */
+  async autoGenerateProject(projectId: number): Promise<void> {
+    console.log(`[autoGenerate] Starting full pipeline for project ${projectId}`);
+
+    try {
+      // Step 1: Analyze
+      console.log(`[autoGenerate] Step 1: Analyzing project...`);
+      await this.analyzeProject(projectId);
+
+      // Step 2: Generate Characters
+      console.log(`[autoGenerate] Step 2: Generating characters...`);
+      await this.generateCharacters(projectId);
+
+      // Step 2.5: Generate Character Reference Images
+      console.log(`[autoGenerate] Step 2.5: Generating character reference images...`);
+      const charProject = await this.getProject(projectId);
+      if (charProject && charProject.characters) {
+        for (const character of charProject.characters) {
+          try {
+            console.log(`[autoGenerate] Generating reference image for character: ${character.name}`);
+            await this.generateCharacterReference(character.id);
+            // Wait a bit between character generations
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (err: any) {
+            console.error(`[autoGenerate] Failed to generate reference for character ${character.name}:`, err.message);
+            // Continue with next characters even if one fails
+          }
+        }
+      }
+
+      // Step 3: Generate Locations
+      console.log(`[autoGenerate] Step 3: Generating locations...`);
+      await this.generateLocations(projectId);
+
+      // Step 3.5: Generate Location Reference Images
+      console.log(`[autoGenerate] Step 3.5: Generating location reference images...`);
+      const locProject = await this.getProject(projectId);
+      if (locProject && locProject.locations) {
+        for (const location of locProject.locations) {
+          try {
+            console.log(`[autoGenerate] Generating reference image for location: ${location.name}`);
+            await this.generateLocationReference(location.id);
+            // Wait a bit between location generations
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (err: any) {
+            console.error(`[autoGenerate] Failed to generate reference for location ${location.name}:`, err.message);
+            // Continue with next locations even if one fails
+          }
+        }
+      }
+
+      // Step 4: Generate Storyboard
+      console.log(`[autoGenerate] Step 4: Generating storyboard...`);
+      await this.generateStoryboard(projectId);
+
+      // Step 5: Check Continuity
+      console.log(`[autoGenerate] Step 5: Checking continuity...`);
+      await this.checkContinuity(projectId);
+
+      // Step 6: Rebuild Prompts
+      console.log(`[autoGenerate] Step 6: Rebuilding prompts...`);
+      await this.rebuildShotPrompts(projectId);
+
+      // Step 7: Get all shots and generate videos
+      const project = await this.getProject(projectId);
+      if (!project || !project.shots) {
+        console.error(`[autoGenerate] Failed to load project or shots for project ${projectId}`);
+        return;
+      }
+
+      console.log(`[autoGenerate] Step 7: Generating videos for ${project.shots.length} shots...`);
+
+      // Generate videos for all shots sequentially (with a small delay between each)
+      for (let i = 0; i < project.shots.length; i++) {
+        const shot = project.shots[i];
+        console.log(`[autoGenerate] Generating video for shot ${shot.shotIndex} (${i + 1}/${project.shots.length})...`);
+
+        try {
+          await this.generateShotVideo(shot.id, {
+            resolution: "720P",
+            duration: shot.duration,
+          });
+
+          // Wait a bit between shots to avoid overwhelming the API
+          if (i < project.shots.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (err: any) {
+          console.error(`[autoGenerate] Failed to generate video for shot ${shot.shotIndex}:`, err.message);
+          // Continue with next shots even if one fails
+        }
+      }
+
+      console.log(`[autoGenerate] Full pipeline completed for project ${projectId}`);
+    } catch (err: any) {
+      console.error(`[autoGenerate] Pipeline failed for project ${projectId}:`, err);
+      // Update project status to failed
+      await db
+        .update(storyProjects)
+        .set({ status: "failed", updatedAt: Date.now() })
+        .where(eq(storyProjects.id, projectId));
+    }
   }
 
   // ===== Generate Character Reference Image =====

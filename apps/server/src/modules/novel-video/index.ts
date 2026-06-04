@@ -10,11 +10,11 @@ export const novelVideoRoute = new Elysia({ prefix: "/novel-video" })
   })
 
   .post("/projects", async ({ body }) => {
-    const { title, storyText } = body as { title?: string; storyText: string };
+    const { title, storyText, autoGenerate } = body as { title?: string; storyText: string; autoGenerate?: boolean };
     if (!storyText?.trim()) {
       throw new Error("故事文本不能为空");
     }
-    const project = await novelVideoService.createProject({ title, storyText });
+    const project = await novelVideoService.createProject({ title, storyText, autoGenerate });
     return { data: project, timestamp: new Date().toISOString() };
   })
 

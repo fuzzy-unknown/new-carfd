@@ -126,6 +126,7 @@ type StepKey = (typeof STEPS)[number]["key"];
 export function Explore() {
   const [story, setStory] = useState("");
   const [title, setTitle] = useState("");
+  const [autoGenerate, setAutoGenerate] = useState(false);
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [activeStep, setActiveStep] = useState<StepKey>("story");
   const [loading, setLoading] = useState(false);
@@ -185,11 +186,19 @@ export function Explore() {
 
   const handleCreateAndAnalyze = () =>
     runPipeline(
-      () => api.novelVideo.createProject({ title: title || undefined, storyText: story.trim() }).then((res: any) => {
+      () => api.novelVideo.createProject({ title: title || undefined, storyText: story.trim(), autoGenerate }).then((res: any) => {
         const projectId = res.data.id;
+        // If autoGenerate is enabled, the pipeline runs in background, so we just return the project
+        if (autoGenerate) {
+          // Start polling for updates immediately
+          setProject(res.data);
+          setActiveStep("generate");
+          return res.data;
+        }
+        // Otherwise, analyze as usual
         return api.novelVideo.analyzeProject(projectId);
       }),
-      "characters"
+      autoGenerate ? "generate" : "characters"
     );
 
   const handleReAnalyze = () =>
@@ -443,6 +452,8 @@ export function Explore() {
               setStory={setStory}
               title={title}
               setTitle={setTitle}
+              autoGenerate={autoGenerate}
+              setAutoGenerate={setAutoGenerate}
               loading={loading}
               onSubmit={handleCreateAndAnalyze}
             />
@@ -553,12 +564,14 @@ export function Explore() {
 // ===== Step 1: Story Input (no project yet) =====
 
 function StoryInputStep({
-  story, setStory, title, setTitle, loading, onSubmit,
+  story, setStory, title, setTitle, autoGenerate, setAutoGenerate, loading, onSubmit,
 }: {
   story: string;
   setStory: (v: string) => void;
   title: string;
   setTitle: (v: string) => void;
+  autoGenerate: boolean;
+  setAutoGenerate: (v: boolean) => void;
   loading: boolean;
   onSubmit: () => void;
 }) {
@@ -587,11 +600,26 @@ function StoryInputStep({
             className="min-h-48 resize-y"
           />
         </div>
+        <div className="flex items-center justify-between border-t pt-4">
+          <div className="flex items-center gap-3">
+            <Switch
+              id="auto-generate"
+              checked={autoGenerate}
+              onCheckedChange={setAutoGenerate}
+            />
+            <Label htmlFor="auto-generate" className="cursor-pointer">
+              <span className="font-medium">自动生成视频</span>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                开启后将自动完成整个流程并生成所有镜头视频
+              </p>
+            </Label>
+          </div>
+        </div>
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">{story.length} 字</span>
           <Button onClick={onSubmit} disabled={loading || !story.trim()} size="lg">
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-            {loading ? "创建并解析中..." : "创建并解析"}
+            {loading ? "创建中..." : autoGenerate ? "创建并自动生成" : "创建并解析"}
           </Button>
         </div>
       </CardContent>
@@ -1493,6 +1521,19 @@ function GenerateShotCard({
             </div>
 
             <p className="text-sm text-muted-foreground line-clamp-2">{shot.narrative}</p>
+
+            {/* Video prompt - show when available */}
+            {shot.videoPrompt && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] text-muted-foreground">视频提示词</Label>
+                  <span className="text-[10px] text-muted-foreground">{shot.videoPrompt.length} 字符</span>
+                </div>
+                <div className="text-[11px] text-muted-foreground bg-muted/30 rounded p-2 leading-relaxed max-h-32 overflow-y-auto font-mono">
+                  {shot.videoPrompt}
+                </div>
+              </div>
+            )}
 
             {/* Video preview */}
             {shot.videoUrl && (

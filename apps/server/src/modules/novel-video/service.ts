@@ -428,8 +428,8 @@ export class NovelVideoService {
           ...draft.continuity,
           characterFacing: facingById,
         }),
-        timelineJson: (draft as any).timeline ? JSON.stringify((draft as any).timeline) : null,
-        environmentJson: (draft as any).environment ? JSON.stringify((draft as any).environment) : null,
+        timelineJson: draft.timeline ? JSON.stringify(draft.timeline) : null,
+        environmentJson: draft.environment ? JSON.stringify(draft.environment) : null,
         status: "draft",
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -459,6 +459,8 @@ export class NovelVideoService {
       narrative: s.narrative,
       camera: s.camera,
       continuity: s.continuity,
+      timeline: s.timeline,
+      environment: s.environment,
     }));
 
     const normalizedChars: NormalizedCharacter[] = project.characters.map((c) => ({
@@ -679,6 +681,8 @@ export class NovelVideoService {
     if (patch.characterIds) updates.characterIdsJson = JSON.stringify(patch.characterIds);
     if (patch.camera) updates.cameraJson = JSON.stringify(patch.camera);
     if (patch.continuity) updates.continuityJson = JSON.stringify(patch.continuity);
+    if (patch.timeline) updates.timelineJson = JSON.stringify(patch.timeline);
+    if (patch.environment) updates.environmentJson = JSON.stringify(patch.environment);
 
     await db
       .update(storyShots)

@@ -3,13 +3,27 @@ import path from "path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { UPLOADS_DIR } from "../config/paths";
 
-const client = new OSS({
-  accessKeyId: process.env.OSS_ACCESS_KEY_ID || "",
-  accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET || "",
-  bucket: process.env.OSS_BUCKET || "",
-  region: process.env.OSS_REGION || "",
-  endpoint: process.env.OSS_ENDPOINT || undefined,
-});
+let _client: OSS | null = null;
+
+function getOSSClient(): OSS {
+  if (!_client) {
+    const accessKeyId = process.env.OSS_ACCESS_KEY_ID;
+    const accessKeySecret = process.env.OSS_ACCESS_KEY_SECRET;
+    const bucket = process.env.OSS_BUCKET;
+    const region = process.env.OSS_REGION;
+    if (!accessKeyId || !accessKeySecret || !bucket || !region) {
+      throw new Error("OSS credentials not configured (OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET, OSS_BUCKET, OSS_REGION required)");
+    }
+    _client = new OSS({
+      accessKeyId,
+      accessKeySecret,
+      bucket,
+      region,
+      endpoint: process.env.OSS_ENDPOINT || undefined,
+    });
+  }
+  return _client;
+}
 
 const UPLOAD_PREFIX = process.env.OSS_UPLOAD_PREFIX || "uploads";
 const GENERATED_PREFIX = process.env.OSS_GENERATED_PREFIX || "generated";
@@ -35,7 +49,7 @@ export async function uploadToOSS(
 ): Promise<string> {
   const key = `${UPLOAD_PREFIX}/${fileName}`;
 
-  await client.put(key, buffer, {
+  await getOSSClient().put(key, buffer, {
     headers: contentType ? { "Content-Type": contentType } : undefined,
   });
 
@@ -60,7 +74,7 @@ export async function uploadGeneratedToOSS(
 ): Promise<string> {
   const key = `${GENERATED_PREFIX}/${fileName}`;
 
-  await client.put(key, buffer, {
+  await getOSSClient().put(key, buffer, {
     headers: contentType ? { "Content-Type": contentType } : undefined,
   });
 

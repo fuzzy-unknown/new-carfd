@@ -5,6 +5,7 @@ import { UPLOADS_DIR } from "../../config/paths";
 import { eq, and, or, desc } from "drizzle-orm";
 import path from "path";
 import { mkdir, writeFile } from "node:fs/promises";
+import { uploadGeneratedToOSS } from "../../lib/oss";
 import { parseDashScopeError } from "../../utils/dashscope-errors";
 
 const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || "";
@@ -671,9 +672,29 @@ export class BailianService {
           const duration = inputParams.duration || 5;
           const cost = this.calculateCost(record.model, undefined, undefined, duration, resolution);
 
+          // Try to upload to OSS (fall back to local URL on failure)
+          let finalUrl = localUrl;
+          try {
+            const relativePath = localUrl.replace("/api/uploads/", "");
+            const fullPath = path.join(UPLOADS_DIR, relativePath);
+            const file = Bun.file(fullPath);
+            if (await file.exists()) {
+              const buffer = Buffer.from(await file.arrayBuffer());
+              const ext = path.extname(relativePath).slice(1) || "mp4";
+              const mimeMap: Record<string, string> = {
+                mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", avi: "video/x-msvideo",
+              };
+              const contentType = mimeMap[ext] || "video/mp4";
+              const ossUrl = await uploadGeneratedToOSS(buffer, `video/${record.taskId}/result.${ext}`, contentType);
+              if (ossUrl) finalUrl = ossUrl;
+            }
+          } catch (ossErr) {
+            console.warn(`[pollVideoTasks] OSS upload failed for task ${record.taskId}, using local URL:`, ossErr);
+          }
+
           await this.updateRecord(record.taskId, {
             status: 'succeeded',
-            outputResult: JSON.stringify({ results: [{ video_url: localUrl }] }),
+            outputResult: JSON.stringify({ results: [{ video_url: finalUrl }] }),
             cost: JSON.stringify(cost),
           });
         } catch (dlError: any) {

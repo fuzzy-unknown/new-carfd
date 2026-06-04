@@ -13,22 +13,24 @@ export class OpenAIClient {
   }
 
   /**
-   * Generate image using DALL-E 2 or DALL-E 3
+   * Generate image using GPT Image 2, DALL-E 2 or DALL-E 3
    */
   async generateImage(options: {
     prompt: string;
-    model?: "dall-e-2" | "dall-e-3";
-    size?: "256x256" | "512x512" | "1024x1024" | "1792x1024" | "1024x1792";
+    model?: "gpt-image-2" | "dall-e-2" | "dall-e-3";
+    size?: "256x256" | "512x512" | "1024x1024" | "1792x1024" | "1024x1792" | "2048x2048" | "4096x4096";
     quality?: "standard" | "hd";
     style?: "vivid" | "natural";
+    mode?: "instant" | "thinking";
     n?: number;
   }): Promise<{ url: string; revisedPrompt?: string }> {
     const {
       prompt,
-      model = "dall-e-2",
+      model = "gpt-image-2",
       size = "1024x1024",
       quality = "standard",
       style = "vivid",
+      mode = "instant",
       n = 1,
     } = options;
 
@@ -41,6 +43,7 @@ export class OpenAIClient {
       size,
       quality,
       style,
+      mode,
       promptLen: prompt.length,
     });
 
@@ -50,6 +53,15 @@ export class OpenAIClient {
       n,
       size,
     };
+
+    // GPT Image 2 specific parameters
+    if (model === "gpt-image-2") {
+      body.mode = mode;
+      // GPT Image 2 supports higher resolutions
+      if (size === "4096x4096" || size === "2048x2048") {
+        body.size = size;
+      }
+    }
 
     // DALL-E 3 specific parameters
     if (model === "dall-e-3") {

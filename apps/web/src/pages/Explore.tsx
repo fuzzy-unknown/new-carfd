@@ -840,7 +840,7 @@ function CharacterCard({
 }) {
   const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>("dall-e-2");
+  const [selectedModel, setSelectedModel] = useState<string>("gpt-image-2");
   const [showPrompt, setShowPrompt] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -944,8 +944,9 @@ function CharacterCard({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="dall-e-2">DALL-E 2 (OpenAI)</SelectItem>
+                  <SelectItem value="gpt-image-2">GPT Image 2 (OpenAI)</SelectItem>
                   <SelectItem value="dall-e-3">DALL-E 3 (OpenAI)</SelectItem>
+                  <SelectItem value="dall-e-2">DALL-E 2 (OpenAI)</SelectItem>
                   <SelectItem value="qwen-image-2.0-pro">千问图像 2.0 Pro (阿里)</SelectItem>
                 </SelectContent>
               </Select>

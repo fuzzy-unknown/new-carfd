@@ -7,7 +7,7 @@ export interface ImageProviderConfig {
 
 /**
  * Get the image provider configuration from environment variables
- * Defaults to OpenAI (dall-e-2) if IMAGE_PROVIDER is not set
+ * Defaults to OpenAI (gpt-image-2) if IMAGE_PROVIDER is not set
  */
 export function getImageProviderConfig(): ImageProviderConfig {
   const provider = (process.env.IMAGE_PROVIDER as ImageProvider) || "openai";
@@ -15,6 +15,6 @@ export function getImageProviderConfig(): ImageProviderConfig {
 
   return {
     provider,
-    model: model || (provider === "openai" ? "dall-e-2" : "qwen-image-2.0-pro"),
+    model: model || (provider === "openai" ? "gpt-image-2" : "qwen-image-2.0-pro"),
   };
 }

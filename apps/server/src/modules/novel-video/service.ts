@@ -1138,7 +1138,7 @@ export class NovelVideoService {
 
     if (userSelectedModel) {
       // Determine provider from model name
-      if (userSelectedModel.startsWith("dall-e")) {
+      if (userSelectedModel.startsWith("gpt-image") || userSelectedModel.startsWith("dall-e")) {
         provider = "openai";
         model = userSelectedModel;
       } else if (userSelectedModel.startsWith("qwen")) {
@@ -1153,7 +1153,7 @@ export class NovelVideoService {
     } else {
       const imageConfig = getImageProviderConfig();
       provider = imageConfig.provider;
-      model = imageConfig.model || "dall-e-2";
+      model = imageConfig.model || "gpt-image-2";
     }
 
     console.log(`[callImageGeneration] Using provider: ${provider}, model: ${model}`);
@@ -1231,14 +1231,15 @@ export class NovelVideoService {
     prompt: string,
     taskIdPrefix: string,
     filePrefix: string,
-    model: "dall-e-2" | "dall-e-3"
+    model: "gpt-image-2" | "dall-e-2" | "dall-e-3"
   ): Promise<string> {
     const result = await openaiClient.generateImage({
       prompt,
       model,
-      size: model === "dall-e-3" ? "1024x1024" : "1024x1024",
+      size: "1024x1024",
       quality: "standard",
       style: "vivid",
+      mode: "instant",
       n: 1,
     });
 

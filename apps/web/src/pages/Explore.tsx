@@ -1003,6 +1003,7 @@ function CharacterCard({
               </span>
             </button>
           </div>
+          </div>
         )}
         <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
 

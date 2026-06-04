@@ -20,6 +20,13 @@ export interface NormalizedShot {
     emotionStart: string;
     emotionEnd: string;
   };
+  timeline?: Array<{ time: string; action: string }>;
+  environment?: {
+    backgroundMotion?: string;
+    lighting?: string;
+    mood?: string;
+    style?: string;
+  };
 }
 
 export interface NormalizedCharacter {

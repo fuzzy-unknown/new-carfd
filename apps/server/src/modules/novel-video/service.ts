@@ -428,6 +428,8 @@ export class NovelVideoService {
           ...draft.continuity,
           characterFacing: facingById,
         }),
+        timelineJson: (draft as any).timeline ? JSON.stringify((draft as any).timeline) : null,
+        environmentJson: (draft as any).environment ? JSON.stringify((draft as any).environment) : null,
         status: "draft",
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -527,6 +529,8 @@ export class NovelVideoService {
           narrative: shot.narrative,
           camera: shot.camera,
           continuity: shot.continuity,
+          timeline: shot.timeline,
+          environment: shot.environment,
         },
         characters: shotChars.map((c) => ({
           id: c.id,
@@ -737,6 +741,8 @@ export class NovelVideoService {
           narrative: shot.narrative,
           camera: JSON.parse(shot.cameraJson),
           continuity: JSON.parse(shot.continuityJson),
+          timeline: shot.timelineJson ? JSON.parse(shot.timelineJson) : undefined,
+          environment: shot.environmentJson ? JSON.parse(shot.environmentJson) : undefined,
         },
         characters: shotChars.map((c) => ({
           id: c.id,

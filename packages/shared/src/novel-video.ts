@@ -86,7 +86,7 @@ export interface ShotDraft {
   camera: {
     shotSize: "wide" | "medium" | "close_up" | "extreme_close_up";
     angle: "front" | "side" | "over_shoulder" | "low_angle" | "high_angle";
-    movement: "static" | "push_in" | "pull_out" | "pan_left" | "pan_right" | "tracking";
+    movement: "static" | "push_in" | "pull_out" | "pan_left" | "pan_right" | "tracking" | "slow dolly in" | "slow dolly out" | "orbit shot" | "crane shot";
     lens: string;
   };
   continuity: {
@@ -96,6 +96,13 @@ export interface ShotDraft {
     actionEnd: string;
     emotionStart: string;
     emotionEnd: string;
+  };
+  timeline?: Array<{ time: string; action: string }>;
+  environment?: {
+    backgroundMotion?: string;
+    lighting?: string;
+    mood?: string;
+    style?: string;
   };
   prompt?: {
     videoPrompt?: string;

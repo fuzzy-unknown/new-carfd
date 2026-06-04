@@ -138,6 +138,8 @@ export const storyShots = sqliteTable("story_shots", {
   continuityJson: text("continuity_json").notNull(),
   videoPrompt: text("video_prompt"),
   negativePrompt: text("negative_prompt"),
+  timelineJson: text("timeline_json"), // JSON array of {time: "0s-1s", action: "..."}
+  environmentJson: text("environment_json"), // JSON object with backgroundMotion, lighting, mood, style
   videoTaskId: text("video_task_id"),
   videoUrl: text("video_url"),
   status: text("status").notNull().default("draft"),

@@ -47,6 +47,8 @@ export interface ShotDTO {
   narrative: string;
   camera: ShotDraft["camera"];
   continuity: ShotDraft["continuity"];
+  timeline?: Array<{ time: string; action: string }>;
+  environment?: { backgroundMotion?: string; lighting?: string; mood?: string; style?: string };
   videoPrompt: string | null;
   negativePrompt: string | null;
   videoTaskId: string | null;
@@ -154,6 +156,16 @@ export function mapShot(row: StoryShot): ShotDTO {
   };
   try { continuity = JSON.parse(row.continuityJson); } catch { /* skip */ }
 
+  let timeline: Array<{ time: string; action: string }> | undefined;
+  if (row.timelineJson) {
+    try { timeline = JSON.parse(row.timelineJson); } catch { /* skip */ }
+  }
+
+  let environment: { backgroundMotion?: string; lighting?: string; mood?: string; style?: string } | undefined;
+  if (row.environmentJson) {
+    try { environment = JSON.parse(row.environmentJson); } catch { /* skip */ }
+  }
+
   return {
     id: row.id,
     projectId: row.projectId,
@@ -164,6 +176,8 @@ export function mapShot(row: StoryShot): ShotDTO {
     narrative: row.narrative,
     camera,
     continuity,
+    timeline,
+    environment,
     videoPrompt: row.videoPrompt,
     negativePrompt: row.negativePrompt,
     videoTaskId: row.videoTaskId,

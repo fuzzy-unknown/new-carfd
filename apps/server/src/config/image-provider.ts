@@ -7,10 +7,10 @@ export interface ImageProviderConfig {
 
 /**
  * Get the image provider configuration from environment variables
- * Defaults to DashScope if IMAGE_PROVIDER is not set
+ * Defaults to OpenAI (dall-e-2) if IMAGE_PROVIDER is not set
  */
 export function getImageProviderConfig(): ImageProviderConfig {
-  const provider = (process.env.IMAGE_PROVIDER as ImageProvider) || "dashscope";
+  const provider = (process.env.IMAGE_PROVIDER as ImageProvider) || "openai";
   const model = process.env.IMAGE_MODEL;
 
   return {

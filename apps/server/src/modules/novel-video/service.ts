@@ -1212,7 +1212,7 @@ export class NovelVideoService {
 
     console.log(`[generateLocationReference] Generating for location "${location.name}" (id=${locationId})`);
 
-    // Use unified image generation method (supports both DashScope and OpenAI)
+    // Use DashScope image generation
     const localUrl = await this.callImageGeneration(
       prompt,
       negativePrompt,

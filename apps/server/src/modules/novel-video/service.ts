@@ -1049,7 +1049,7 @@ export class NovelVideoService {
 
   // ===== Generate Character Reference Image =====
 
-  async generateCharacterReference(characterId: number): Promise<CharacterDTO> {
+  async generateCharacterReference(characterId: number, model?: string): Promise<CharacterDTO> {
     const [character] = await db
       .select()
       .from(storyCharacters)
@@ -1062,7 +1062,7 @@ export class NovelVideoService {
     const basePrompt = character.identityPrompt;
     const negativePrompt = (character.negativePrompt || "") + ", background, scenery, environment, landscape, indoor, outdoor, lighting effects";
 
-    console.log(`[generateCharacterReference] Generating for character "${character.name}" (id=${characterId})`);
+    console.log(`[generateCharacterReference] Generating for character "${character.name}" (id=${characterId}, model=${model})`);
 
     // 1. Generate portrait (white background, character only)
     const portraitPrompt = `Character portrait, ${basePrompt}. Plain white background, full body or upper body portrait, character standing still facing forward, no background scenery, no environment, studio lighting on white backdrop, character design sheet style.`;
@@ -1071,7 +1071,8 @@ export class NovelVideoService {
       portraitPrompt,
       negativePrompt,
       `ref-char-${characterId}`,
-      "portrait"
+      "portrait",
+      model
     );
 
     // Upload portrait to OSS
@@ -1089,7 +1090,8 @@ export class NovelVideoService {
         turnaroundPrompt,
         negativePrompt,
         `ref-char-${characterId}-turnaround`,
-        "turnaround"
+        "turnaround",
+        model
       );
 
       try { turnaroundFinal = await this.uploadLocalToOSS(turnaroundUrl, `char/${characterId}-turnaround-${Date.now()}`); } catch (err) {
@@ -1127,16 +1129,39 @@ export class NovelVideoService {
     prompt: string,
     negativePrompt: string,
     taskIdPrefix: string,
-    filePrefix: string
+    filePrefix: string,
+    userSelectedModel?: string
   ): Promise<string> {
-    const imageConfig = getImageProviderConfig();
+    // If user selected a specific model, use it; otherwise use default config
+    let provider: ImageProvider;
+    let model: string;
 
-    console.log(`[callImageGeneration] Using provider: ${imageConfig.provider}, model: ${imageConfig.model}`);
-
-    if (imageConfig.provider === "openai") {
-      return await this.callOpenAIImageGeneration(prompt, taskIdPrefix, filePrefix);
+    if (userSelectedModel) {
+      // Determine provider from model name
+      if (userSelectedModel.startsWith("dall-e")) {
+        provider = "openai";
+        model = userSelectedModel;
+      } else if (userSelectedModel.startsWith("qwen")) {
+        provider = "dashscope";
+        model = userSelectedModel;
+      } else {
+        // Default to config
+        const imageConfig = getImageProviderConfig();
+        provider = imageConfig.provider;
+        model = imageConfig.model || userSelectedModel;
+      }
     } else {
-      return await this.callDashScopeImageGeneration(prompt, negativePrompt, taskIdPrefix, filePrefix);
+      const imageConfig = getImageProviderConfig();
+      provider = imageConfig.provider;
+      model = imageConfig.model || "dall-e-2";
+    }
+
+    console.log(`[callImageGeneration] Using provider: ${provider}, model: ${model}`);
+
+    if (provider === "openai") {
+      return await this.callOpenAIImageGeneration(prompt, taskIdPrefix, filePrefix, model as "dall-e-2" | "dall-e-3");
+    } else {
+      return await this.callDashScopeImageGeneration(prompt, negativePrompt, taskIdPrefix, filePrefix, model);
     }
   }
 
@@ -1147,11 +1172,10 @@ export class NovelVideoService {
     prompt: string,
     negativePrompt: string,
     taskIdPrefix: string,
-    filePrefix: string
+    filePrefix: string,
+    model: string
   ): Promise<string> {
     const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || "";
-    const imageConfig = getImageProviderConfig();
-    const model = imageConfig.model || "qwen-image-2.0-pro";
 
     const response = await fetch(
       "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
@@ -1206,11 +1230,9 @@ export class NovelVideoService {
   private async callOpenAIImageGeneration(
     prompt: string,
     taskIdPrefix: string,
-    filePrefix: string
+    filePrefix: string,
+    model: "dall-e-2" | "dall-e-3"
   ): Promise<string> {
-    const imageConfig = getImageProviderConfig();
-    const model = (imageConfig.model as "dall-e-2" | "dall-e-3") || "dall-e-2";
-
     const result = await openaiClient.generateImage({
       prompt,
       model,

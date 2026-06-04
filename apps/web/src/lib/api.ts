@@ -152,9 +152,11 @@ export const api = {
       }).then(handleResponse);
     },
 
-    generateCharacterReference: (id: number) =>
+    generateCharacterReference: (id: number, model?: string) =>
       fetch(`${API_BASE}/novel-video/characters/${id}/generate-reference`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
       }).then(handleResponse),
 
     generateLocationReference: (id: number) =>

@@ -311,8 +311,8 @@ export function Explore() {
     }
   };
 
-  const handleGenerateRef = async (characterId: number) => {
-    const res: any = await api.novelVideo.generateCharacterReference(characterId);
+  const handleGenerateRef = async (characterId: number, model?: string) => {
+    const res: any = await api.novelVideo.generateCharacterReference(characterId, model);
     if (res?.data) {
       setProject((prev) =>
         prev
@@ -796,7 +796,7 @@ function CharacterStep({
   onToggleLock: (id: number, locked: boolean) => void;
   onUpdate: (id: number, patch: Record<string, any>) => void;
   onUpload: (charId: number, file: File) => Promise<void>;
-  onGenerateRef: (charId: number) => Promise<void>;
+  onGenerateRef: (charId: number, model?: string) => Promise<void>;
   onImagePreview: (url: string) => void;
   loading: boolean;
 }) {
@@ -834,12 +834,17 @@ function CharacterCard({
   onToggleLock: (id: number, locked: boolean) => void;
   onUpdate: (id: number, patch: Record<string, any>) => void;
   onUpload: (charId: number, file: File) => Promise<void>;
-  onGenerateRef: (charId: number) => Promise<void>;
+  onGenerateRef: (charId: number, model?: string) => Promise<void>;
   onImagePreview: (url: string) => void;
 }) {
   const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>("dall-e-2");
+  const [showPrompt, setShowPrompt] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Default three-view prompt template
+  const threeViewPromptTemplate = `Use the uploaded character as a reference, generate a professional character three-view setting reference sheet. The composition completely references the reference image, divided into left and right parts, the left side is the front, side, and back full-body three-view, the right side is multi-angle facial close-ups, clothing texture details, accessory close-ups, and color palette. Keep the character's facial features, hairstyle, and outfit completely consistent, maintain a hyper-realistic texture, cinematic soft lighting and shadows, pure white background, clean image, standardized layout.`;
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -851,7 +856,7 @@ function CharacterCard({
 
   const handleGenerate = async () => {
     setGenerating(true);
-    try { await onGenerateRef(character.id); } finally { setGenerating(false); }
+    try { await onGenerateRef(character.id, selectedModel); } finally { setGenerating(false); }
   };
 
   return (
@@ -929,23 +934,57 @@ function CharacterCard({
             )}
           </div>
         ) : (
-          <div className="border-2 border-dashed rounded-lg divide-y divide-dashed">
-            {/* Primary: generate from prompt */}
-            <button
-              onClick={handleGenerate}
-              disabled={generating || !character.identityPrompt}
-              className="w-full p-3 flex flex-col items-center gap-1 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {generating ? (
-                <Loader2 className="w-5 h-5 animate-spin text-primary" />
-              ) : (
-                <Sparkles className="w-5 h-5 text-primary" />
+          <div className="space-y-2">
+            {/* Model selection */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">图片生成模型</Label>
+              <Select value={selectedModel} onValueChange={setSelectedModel}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dall-e-2">DALL-E 2 (OpenAI)</SelectItem>
+                  <SelectItem value="dall-e-3">DALL-E 3 (OpenAI)</SelectItem>
+                  <SelectItem value="qwen-image-2.0-pro">千问图像 2.0 Pro (阿里)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Three-view prompt display */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-[10px] text-muted-foreground">三视图生成提示词</Label>
+                <button
+                  onClick={() => setShowPrompt(!showPrompt)}
+                  className="text-[10px] text-primary hover:underline"
+                >
+                  {showPrompt ? "隐藏" : "显示"}
+                </button>
+              </div>
+              {showPrompt && (
+                <div className="text-[10px] text-muted-foreground bg-muted/30 rounded p-2 leading-relaxed max-h-24 overflow-y-auto font-mono">
+                  {threeViewPromptTemplate}
+                </div>
               )}
-              <span className="text-xs font-medium">
-                {generating ? "生成中（肖像 + 三视图）..." : "从提示词生成参考图"}
-              </span>
-              <span className="text-[10px] text-muted-foreground">
-                自动生成角色肖像和三视图（正面/侧面/背面）
+            </div>
+
+            <div className="border-2 border-dashed rounded-lg divide-y divide-dashed">
+              {/* Primary: generate from prompt */}
+              <button
+                onClick={handleGenerate}
+                disabled={generating || !character.identityPrompt}
+                className="w-full p-3 flex flex-col items-center gap-1 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {generating ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                ) : (
+                  <Sparkles className="w-5 h-5 text-primary" />
+                )}
+                <span className="text-xs font-medium">
+                  {generating ? "生成中（肖像 + 三视图）..." : "从提示词生成参考图"}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  自动生成角色肖像和三视图（正面/侧面/背面）
               </span>
             </button>
             {/* Secondary: upload custom image */}

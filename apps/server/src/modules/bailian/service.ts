@@ -5,7 +5,7 @@ import { UPLOADS_DIR } from "../../config/paths";
 import { eq, and, or, desc } from "drizzle-orm";
 import path from "path";
 import { mkdir, writeFile } from "node:fs/promises";
-import { uploadGeneratedToOSS } from "../../lib/oss";
+import { uploadToOSSOnly } from "../../lib/oss";
 import { parseDashScopeError } from "../../utils/dashscope-errors";
 
 const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || "";
@@ -685,7 +685,7 @@ export class BailianService {
                 mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", avi: "video/x-msvideo",
               };
               const contentType = mimeMap[ext] || "video/mp4";
-              const ossUrl = await uploadGeneratedToOSS(buffer, `video/${record.taskId}/result.${ext}`, contentType);
+              const ossUrl = await uploadToOSSOnly(buffer, `video/${record.taskId}/result.${ext}`, contentType);
               if (ossUrl) finalUrl = ossUrl;
             }
           } catch (ossErr) {

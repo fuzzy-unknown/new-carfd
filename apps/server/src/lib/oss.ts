@@ -47,6 +47,15 @@ export async function uploadToOSS(
   fileName: string,
   contentType?: string
 ): Promise<string> {
+  // Validate buffer
+  if (buffer.length === 0) {
+    throw new Error("Cannot upload empty file");
+  }
+  const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+  if (buffer.length > MAX_FILE_SIZE) {
+    throw new Error(`File too large: ${buffer.length} bytes (max ${MAX_FILE_SIZE})`);
+  }
+
   const key = `${UPLOAD_PREFIX}/${fileName}`;
 
   await getOSSClient().put(key, buffer, {
@@ -54,10 +63,15 @@ export async function uploadToOSS(
   });
 
   // Also save locally
-  const localDir = path.join(UPLOADS_DIR, path.dirname(fileName));
-  await mkdir(localDir, { recursive: true });
-  const localPath = path.join(UPLOADS_DIR, fileName);
-  await writeFile(localPath, buffer);
+  try {
+    const localDir = path.join(UPLOADS_DIR, path.dirname(fileName));
+    await mkdir(localDir, { recursive: true });
+    const localPath = path.join(UPLOADS_DIR, fileName);
+    await writeFile(localPath, buffer);
+  } catch (localErr) {
+    // Log but don't fail - OSS upload succeeded
+    console.warn("[uploadToOSS] Failed to save local copy:", localErr);
+  }
 
   return getPublicUrl(key);
 }
@@ -72,6 +86,15 @@ export async function uploadGeneratedToOSS(
   fileName: string,
   contentType?: string
 ): Promise<string> {
+  // Validate buffer
+  if (buffer.length === 0) {
+    throw new Error("Cannot upload empty file");
+  }
+  const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+  if (buffer.length > MAX_FILE_SIZE) {
+    throw new Error(`File too large: ${buffer.length} bytes (max ${MAX_FILE_SIZE})`);
+  }
+
   const key = `${GENERATED_PREFIX}/${fileName}`;
 
   await getOSSClient().put(key, buffer, {
@@ -79,10 +102,43 @@ export async function uploadGeneratedToOSS(
   });
 
   // Also save locally
-  const localDir = path.join(UPLOADS_DIR, path.dirname(fileName));
-  await mkdir(localDir, { recursive: true });
-  const localPath = path.join(UPLOADS_DIR, fileName);
-  await writeFile(localPath, buffer);
+  try {
+    const localDir = path.join(UPLOADS_DIR, path.dirname(fileName));
+    await mkdir(localDir, { recursive: true });
+    const localPath = path.join(UPLOADS_DIR, fileName);
+    await writeFile(localPath, buffer);
+  } catch (localErr) {
+    // Log but don't fail - OSS upload succeeded
+    console.warn("[uploadGeneratedToOSS] Failed to save local copy:", localErr);
+  }
+
+  return getPublicUrl(key);
+}
+
+/**
+ * Upload a buffer to OSS under the "generated" prefix WITHOUT saving a local copy.
+ * Use this when the file already exists locally and you only need the OSS URL.
+ * Returns the OSS public URL.
+ */
+export async function uploadToOSSOnly(
+  buffer: Buffer,
+  fileName: string,
+  contentType?: string
+): Promise<string> {
+  // Validate buffer
+  if (buffer.length === 0) {
+    throw new Error("Cannot upload empty file");
+  }
+  const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+  if (buffer.length > MAX_FILE_SIZE) {
+    throw new Error(`File too large: ${buffer.length} bytes (max ${MAX_FILE_SIZE})`);
+  }
+
+  const key = `${GENERATED_PREFIX}/${fileName}`;
+
+  await getOSSClient().put(key, buffer, {
+    headers: contentType ? { "Content-Type": contentType } : undefined,
+  });
 
   return getPublicUrl(key);
 }

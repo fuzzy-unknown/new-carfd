@@ -3,6 +3,9 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
+/* ATELIER Design System Styles (Optional - import when using ui2 components) */
+/* @import "../components/ui2/styles.css"; */
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

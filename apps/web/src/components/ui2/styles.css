@@ -1,0 +1,372 @@
+/* ARTIVUS Design System CSS Variables */
+:root {
+  /* ARTIVUS Color Palette - Dark Theme (Default) */
+  --artivus-bg-primary: #0a0a0a;
+  --artivus-bg-panel: #0f0f0f;
+  --artivus-bg-input: transparent;
+  --artivus-text-primary: rgba(255, 255, 255, 0.9);
+  --artivus-text-secondary: rgba(255, 255, 255, 0.35);
+  --artivus-text-muted: rgba(255, 255, 255, 0.15);
+  --artivus-text-label: rgba(255, 255, 255, 0.35);
+  --artivus-border-subtle: rgba(255, 255, 255, 0.06);
+  --artivus-border-input: rgba(255, 255, 255, 0.08);
+  --artivus-border-hover: rgba(255, 255, 255, 0.12);
+  --artivus-accent-purple: rgba(139, 92, 246, 0.6);
+  --artivus-accent-pink: rgba(244, 63, 94, 0.6);
+  --artivus-gradient: linear-gradient(135deg, #667eea, #764ba2, #f5576c);
+  --artivus-gradient-subtle: linear-gradient(to right, #667eea, #764ba2);
+  --artivus-success: rgba(74, 222, 128, 0.4);
+  --artivus-success-bg: rgba(74, 222, 128, 0.08);
+}
+
+[data-theme="light"] {
+  /* ARTIVUS Color Palette - Light Theme */
+  --artivus-bg-primary: #f5f0eb;
+  --artivus-bg-panel: #faf8f5;
+  --artivus-text-primary: rgba(30, 30, 30, 0.9);
+  --artivus-text-secondary: rgba(30, 30, 30, 0.45);
+  --artivus-text-muted: rgba(30, 30, 30, 0.2);
+  --artivus-text-label: rgba(30, 30, 30, 0.45);
+  --artivus-border-subtle: rgba(30, 30, 30, 0.06);
+  --artivus-border-input: rgba(30, 30, 30, 0.12);
+  --artivus-border-hover: rgba(30, 30, 30, 0.18);
+}
+
+/* ARTIVUS Typography */
+.artivus-font-display {
+  font-family: 'Playfair Display', 'Noto Serif SC', Georgia, serif;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+}
+
+.artivus-font-ui {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-weight: 300;
+  letter-spacing: 0.05em;
+}
+
+.artivus-font-label {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* ARTIVUS Button Styles */
+.artivus-btn {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.artivus-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--artivus-gradient);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.artivus-btn:hover::before {
+  opacity: 1;
+}
+
+.artivus-btn:hover {
+  border-color: transparent;
+  color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.25);
+}
+
+.artivus-btn::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.6s ease, height 0.6s ease;
+}
+
+.artivus-btn:active::after {
+  width: 400px;
+  height: 400px;
+}
+
+.artivus-btn span,
+.artivus-btn > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ARTIVUS Input Styles */
+.artivus-input-wrapper {
+  position: relative;
+}
+
+.artivus-input {
+  width: 100%;
+  padding: 14px 0;
+  padding-right: 40px;
+  background: var(--artivus-bg-input);
+  border: none;
+  border-bottom: 1px solid var(--artivus-border-input);
+  color: var(--artivus-text-primary);
+  font-size: 15px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  letter-spacing: 1px;
+  outline: none;
+  transition: all 0.4s ease;
+}
+
+.artivus-input::placeholder {
+  color: var(--artivus-text-muted);
+  font-style: italic;
+}
+
+.artivus-input:focus {
+  border-bottom-color: var(--artivus-accent-purple);
+}
+
+.artivus-input:focus ~ .artivus-input-line {
+  transform: scaleX(1);
+}
+
+.artivus-input-line {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--artivus-gradient-subtle);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.artivus-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--artivus-text-label);
+  margin-bottom: 10px;
+  font-weight: 500;
+  transition: color 0.3s ease;
+}
+
+.artivus-input-group.focused .artivus-label {
+  color: var(--artivus-accent-purple);
+}
+
+/* ARTIVUS Card Styles */
+.artivus-card {
+  background: var(--artivus-bg-panel);
+  border: 1px solid var(--artivus-border-subtle);
+  border-radius: 12px;
+  transition: all 0.4s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.artivus-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -1px;
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(139, 92, 246, 0.3) 30%,
+    rgba(244, 63, 94, 0.3) 70%,
+    transparent
+  );
+  transition: background 0.6s;
+}
+
+.artivus-card:hover {
+  border-color: var(--artivus-border-hover);
+  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.08);
+}
+
+/* ARTIVUS Badge Styles */
+.artivus-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  border-radius: 20px;
+  transition: all 0.3s ease;
+}
+
+/* ARTIVUS Switch Styles */
+.artivus-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.artivus-switch-input {
+  display: none;
+}
+
+.artivus-switch-track {
+  width: 44px;
+  height: 24px;
+  background: var(--artivus-border-input);
+  border-radius: 12px;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.artivus-switch-thumb {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  background: var(--artivus-text-muted);
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.artivus-switch-input:checked + .artivus-switch-track {
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid var(--artivus-accent-purple);
+}
+
+.artivus-switch-input:checked + .artivus-switch-track .artivus-switch-thumb {
+  left: calc(100% - 22px);
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+/* ARTIVUS Checkbox Styles */
+.artivus-checkbox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.artivus-checkbox-input {
+  display: none;
+}
+
+.artivus-checkbox-box {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--artivus-border-input);
+  position: relative;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.artivus-checkbox-box::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.3s ease;
+}
+
+.artivus-checkbox-input:checked + .artivus-checkbox-box {
+  border-color: var(--artivus-accent-purple);
+}
+
+.artivus-checkbox-input:checked + .artivus-checkbox-box::after {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.artivus-checkbox-text {
+  font-size: 11px;
+  color: var(--artivus-text-muted);
+  letter-spacing: 1px;
+  margin-left: 10px;
+}
+
+/* ARTIVUS Fade In Animation */
+@keyframes artivus-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.artivus-fade-in {
+  animation: artivus-fade-in-up 0.8s ease-out;
+}
+
+/* ARTIVUS Select Styles */
+.artivus-select-content {
+  background: var(--artivus-bg-panel);
+  border: 1px solid var(--artivus-border-subtle);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.artivus-select-item {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--artivus-text-primary);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 1px;
+}
+
+.artivus-select-item:hover {
+  background: rgba(139, 92, 246, 0.1);
+  color: var(--artivus-accent-purple);
+}
+
+.artivus-select-item[data-selected="true"] {
+  color: var(--artivus-accent-purple);
+}
+
+.artivus-select-item-indicator {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--artivus-border-input);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.artivus-select-item[data-selected="true"] .artivus-select-item-indicator {
+  border-color: var(--artivus-accent-purple);
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.artivus-select-item[data-selected="true"] .artivus-select-item-indicator::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border-radius: 50%;
+}

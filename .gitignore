@@ -12,5 +12,9 @@ logs
 # Local environment
 .env
 
-apps/server/uploadsapps/server/sqlite.db
+apps/server/uploads
+apps/server/sqlite.db
 uploads
+
+# Claude Code config
+.claude/

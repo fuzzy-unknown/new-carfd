@@ -11,32 +11,37 @@ const NAV_ITEMS = [
 
 export function Navbar() {
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto flex h-14 max-w-7xl items-center px-4">
-        <span className="mr-8 text-lg font-bold tracking-tight">
-          Angry Mushroom
-        </span>
-        <nav className="flex items-center gap-1">
-          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                )
-              }
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-      </div>
-    </header>
+    <aside className="fixed left-0 top-0 z-50 h-screen w-20 border-r bg-background flex flex-col items-center py-4 gap-2">
+      {/* Logo */}
+      <NavLink to="/" className="mb-4">
+        <img
+          src="/logo.webp"
+          alt="Angry Mushroom"
+          className="w-12 h-12 rounded-lg object-contain"
+        />
+      </NavLink>
+
+      {/* Navigation */}
+      <nav className="flex flex-col items-center gap-1 flex-1">
+        {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={end}
+            className={({ isActive }) =>
+              cn(
+                "flex flex-col items-center justify-center rounded-md p-2 text-xs font-medium transition-colors w-16 h-14",
+                isActive
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )
+            }
+          >
+            <Icon className="h-5 w-5" />
+            <span className="mt-1 leading-tight">{label}</span>
+          </NavLink>
+        ))}
+      </nav>
+    </aside>
   );
 }

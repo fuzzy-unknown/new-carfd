@@ -11,7 +11,7 @@ import { initializeDatabase } from "./db";
 import path from "path";
 import { UPLOADS_DIR } from "./config/paths";
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 3007;
 
 async function start() {
   await initializeDatabase();

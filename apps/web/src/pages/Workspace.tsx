@@ -252,16 +252,6 @@ export function Workspace() {
 
   return (
     <div className="space-y-6">
-      {/* 头部 */}
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5">
-          <Sparkles className="w-6 h-6 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">AI 创作工作台</h1>
-          <p className="text-muted-foreground mt-1">使用百炼 AI 模型生成内容</p>
-        </div>
-      </div>
 
       {/* 模型类别选择 */}
       <div className="flex flex-wrap gap-2">

@@ -9,7 +9,7 @@ export function App() {
   return (
     <BrowserRouter>
       <Navbar />
-      <main className="mx-auto max-w-7xl px-4 py-8">
+      <main className="ml-20 min-h-screen p-6">
         <Routes>
           <Route path="/" element={<Workspace />} />
           <Route path="/explore" element={<Explore />} />

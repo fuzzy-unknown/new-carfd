@@ -13,3 +13,4 @@ logs
 .env
 
 apps/server/uploadsapps/server/sqlite.db
+uploads
